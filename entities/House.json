@@ -1,0 +1,47 @@
+{
+  "name": "House",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name or identifier of the house"
+    },
+    "address": {
+      "type": "string",
+      "description": "Address of the house"
+    },
+    "total_rooms": {
+      "type": "number",
+      "description": "Total number of rooms in the house"
+    },
+    "total_capacity": {
+      "type": "number",
+      "description": "Total person capacity"
+    },
+    "responsible_person": {
+      "type": "string",
+      "description": "Name of the person responsible for this house"
+    },
+    "location": {
+      "type": "string",
+      "enum": [
+        "Sarti",
+        "Sykia",
+        "Klimataria",
+        "Kalamitsi",
+        "Porto Koufo",
+        "Toroni",
+        "Zaliv Simonitiko",
+        "Neos Marmaras",
+        "Nikiti",
+        "Metamorfosi",
+        "Psakoudia",
+        "Nea Plaja"
+      ],
+      "description": "Location/village where the house is situated"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

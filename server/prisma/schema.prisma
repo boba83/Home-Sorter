@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String
+  fullName      String
+  role          String   @default("user")
+  profileImage  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model House {
+  id                String   @id @default(cuid())
+  name              String
+  address           String?
+  totalRooms        Int?
+  totalCapacity     Int?
+  responsiblePerson String?
+  location          String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  rooms             Room[]
+}
+
+model Room {
+  id                 String    @id @default(cuid())
+  houseId            String
+  house              House     @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  houseName          String?
+  roomNumber         String
+  roomStructure      String?
+  capacity           Int?
+  currentOccupants   Int?
+  occupantNames      String    @default("[]")
+  notes              String?
+  notesUpdatedAt     DateTime?
+  excursion          String?
+  excursionUpdatedAt DateTime?
+  visit              String?
+  visitUpdatedAt     DateTime?
+  stayFrom           String?
+  stayTo             String?
+  bus                Boolean   @default(false)
+  taxPaid            Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model Column {
+  id        String   @id @default(cuid())
+  name      String
+  order     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tasks     Task[]
+}
+
+model Task {
+  id             String   @id @default(cuid())
+  title          String
+  description    String?
+  columnId       String
+  column         Column   @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  order          Int
+  startDate      String?
+  dueDate        String?
+  labels         String   @default("[]")
+  assignedUsers  String   @default("[]")
+  images         String   @default("[]")
+  cardColor      String?
+  epicTitle      String?
+  checklists     String   @default("[]")
+  comments       String   @default("[]")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}

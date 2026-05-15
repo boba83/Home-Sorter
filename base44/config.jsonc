@@ -1,0 +1,8 @@
+{
+  "name": "home-sorter",
+  "description": "Aplikacija za predstavnike na destinaciji - kuce, sobe, izleti, zadaci",
+  "entitiesDir": "../entities",
+  "site": {
+    "outputDirectory": "../dist"
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "name": "Task",
+  "type": "object",
+  "title": "Task",
+  "description": "Zadatak na Kanban tabli",
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Naslov zadatka"
+    },
+    "description": {
+      "type": "string",
+      "description": "Opis zadatka"
+    },
+    "column_id": {
+      "type": "string",
+      "description": "ID kolone kojoj zadatak pripada"
+    },
+    "order": {
+      "type": "number",
+      "description": "Redosled unutar kolone"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Datum pocetka"
+    },
+    "due_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Rok za zavrsatak"
+    },
+    "labels": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Labele"
+    },
+    "assigned_users": {
+      "type": "array",
+      "items": { "type": "string", "format": "email" },
+      "description": "Email adrese dodeljenih korisnika"
+    },
+    "images": {
+      "type": "array",
+      "items": { "type": "string", "format": "uri" },
+      "description": "URL-ovi uploadovanih slika"
+    },
+    "card_color": {
+      "type": "string",
+      "description": "Boja kartice za Epic grupaciju"
+    },
+    "epic_title": {
+      "type": "string",
+      "description": "Naziv epica koji se prikazuje na kartici"
+    },
+    "checklists": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "done": { "type": "boolean", "default": false }
+        }
+      },
+      "description": "Checklist stavke"
+    },
+    "comments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "author": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "description": "Komentari"
+    }
+  },
+  "required": ["title", "column_id", "order"]
+}

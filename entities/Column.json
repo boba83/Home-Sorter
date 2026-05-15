@@ -1,0 +1,18 @@
+{
+  "name": "Column",
+  "type": "object",
+  "title": "Column",
+  "description": "Kolona na Kanban tabli za upravljanje zadacima",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Naziv kolone"
+    },
+    "order": {
+      "type": "number",
+      "description": "Redosled kolone na tabli"
+    }
+  },
+  "required": ["name", "order"]
+}
