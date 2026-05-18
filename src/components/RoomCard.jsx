@@ -7,28 +7,66 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DoorOpen, Users, Edit2, Trash2, Plus, X, Loader2, StickyNote, Sailboat, UserCheck, Calendar, Bus, ChevronDown, ChevronUp } from 'lucide-react';
+import { DoorOpen, Users, Edit2, Trash2, Plus, X, Loader2, Sailboat, UserCheck, Calendar, Bus, ChevronDown, ChevronUp, FileText, Phone } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 
+function normalizeNames(raw) {
+    if (Array.isArray(raw)) return raw.filter(Boolean);
+    if (typeof raw === 'string') {
+        try {
+            const p = JSON.parse(raw);
+            return Array.isArray(p) ? p : raw.trim() ? [raw] : [];
+        } catch {
+            return raw.trim() ? [raw] : [];
+        }
+    }
+    return [];
+}
+
+/** Prikaz datuma kao na rooming listi / kartici (npr. 18.08.2025) */
+function formatStayDate(value) {
+    if (!value) return '';
+    const s = String(value).trim();
+    if (s.includes('-') && s.length >= 8) {
+        const d = new Date(s);
+        if (!Number.isNaN(d.getTime())) return format(d, 'dd.MM.yyyy');
+    }
+    if (s.includes('.')) {
+        const p = s.split('.').filter(Boolean);
+        if (p.length >= 3) {
+            return `${p[0].padStart(2, '0')}.${p[1].padStart(2, '0')}.${p[2]}`;
+        }
+        if (p.length === 2) {
+            return `${p[0].padStart(2, '0')}.${p[1].padStart(2, '0')}`;
+        }
+    }
+    return s;
+}
+
 export default function RoomCard({ room, onUpdate, onDelete, canEdit = true }) {
+    if (!room?.id) return null;
+
+    const occupantNames = normalizeNames(room.occupant_names);
+
     const [isEditing, setIsEditing] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [editData, setEditData] = useState({
-        room_number: room.room_number,
+        room_number: room.room_number || '',
         room_structure: room.room_structure || '',
         capacity: room.capacity || 1,
-        occupant_names: room.occupant_names || [],
+        occupant_names: occupantNames,
         notes: room.notes || '',
         excursion: room.excursion || '',
         visit: room.visit || '',
         stay_from: room.stay_from || '',
         stay_to: room.stay_to || '',
-        tax_paid: room.tax_paid === true
+        tax_paid: room.tax_paid === true,
+        contact_phone: room.contact_phone || '',
     });
     const [newVisitEntry, setNewVisitEntry] = useState('');
-    const [visitExpanded, setVisitExpanded] = useState(false);
+    const [visitExpanded, setVisitExpanded] = useState(true);
 
     const parseVisitHistory = (visitStr) => {
         if (!visitStr) return [];
@@ -43,7 +81,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true }) {
     const [newOccupant, setNewOccupant] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
-    const occupancy = room.current_occupants || room.occupant_names?.length || 0;
+    const occupancy = room.current_occupants || occupantNames.length || 0;
     const capacity = room.capacity || 1;
     const occupancyPercent = Math.min((occupancy / capacity) * 100, 100);
 
@@ -136,35 +174,43 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true }) {
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.2 }}
             >
-                <Card className="group hover:shadow-sm transition-shadow border border-slate-200 bg-white rounded-xl relative overflow-hidden">
-                    <CardContent className="p-4">
-                        {/* Header */}
-                        <motion.div className="flex items-start justify-between gap-2 mb-4">
+                <Card className="group hover:shadow-md transition-shadow border border-slate-200/90 bg-white rounded-xl relative overflow-hidden shadow-sm">
+                    <CardContent className="p-4 sm:p-5">
+                        {/* Header — broj sobe, struktura, TAX + akcije */}
+                        <motion.div className="flex items-start justify-between gap-3 mb-4">
                             <motion.div className="flex items-center gap-3 min-w-0">
                                 <motion.div className={`w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm ${
                                     occupancy > 0
-                                        ? 'bg-gradient-to-br from-emerald-400 to-green-500'
-                                        : 'bg-gradient-to-br from-slate-300 to-slate-400'
+                                        ? 'bg-gradient-to-br from-emerald-400 to-green-600'
+                                        : 'bg-gradient-to-br from-slate-300 to-slate-500'
                                 }`}>
                                     <DoorOpen className="w-5 h-5 text-white" />
                                 </motion.div>
                                 <motion.div className="min-w-0">
-                                    <h4 className="font-bold text-slate-900 text-base leading-tight">
+                                    <h4 className="font-bold text-slate-900 text-base leading-tight tracking-tight">
                                         Room {room.room_number}
                                     </h4>
-                                    {room.room_structure && (
-                                        <p className="text-sm text-slate-500 mt-0.5 truncate">{room.room_structure}</p>
-                                    )}
+                                    {room.room_structure ? (
+                                        <p className="text-sm mt-0.5 leading-snug text-slate-600">
+                                            {room.room_structure}
+                                        </p>
+                                    ) : null}
+                                    {room.contact_phone ? (
+                                        <p className="text-xs mt-1 text-slate-500 flex items-center gap-1.5 font-medium tabular-nums">
+                                            <Phone className="w-3 h-3 shrink-0 text-slate-400" />
+                                            {room.contact_phone}
+                                        </p>
+                                    ) : null}
                                 </motion.div>
                             </motion.div>
-                            <motion.div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                {(room.stay_from || room.stay_to) && (
-                                    <span className={`text-sm font-semibold whitespace-nowrap ${
-                                        room.tax_paid ? 'text-green-600' : 'text-orange-500'
-                                    }`}>
-                                        TAX {room.tax_paid ? 'Paid' : 'Unpaid'}
-                                    </span>
-                                )}
+                            <motion.div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                                <span
+                                    className={`text-xs font-semibold uppercase tracking-wide ${
+                                        room.tax_paid === true ? 'text-emerald-600' : 'text-red-600'
+                                    }`}
+                                >
+                                    TAX {room.tax_paid === true ? 'Paid' : 'Unpaid'}
+                                </span>
                                 {canEdit && (
                                     <motion.div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)}>
@@ -182,20 +228,20 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true }) {
                             </motion.div>
                         </motion.div>
 
-                        {/* Occupancy */}
+                        {/* Occupancy + gosti (kao na preview-u) */}
                         <motion.div className="mb-3">
-                            <motion.div className="flex items-center justify-between text-sm mb-1.5">
-                                <span className="text-slate-500 flex items-center gap-1.5">
-                                    <Users className="w-3.5 h-3.5" />
+                            <motion.div className="flex items-center justify-between text-sm mb-2">
+                                <span className="text-slate-600 flex items-center gap-1.5 font-medium">
+                                    <Users className="w-3.5 h-3.5 text-slate-500" />
                                     Occupancy
                                 </span>
-                                <span className="font-semibold text-slate-800">{occupancy}/{capacity}</span>
+                                <span className="font-semibold text-slate-900 tabular-nums">{occupancy}/{capacity}</span>
                             </motion.div>
-                            <motion.div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                            <motion.div className="h-2.5 bg-slate-100 rounded-full overflow-hidden mb-2.5">
                                 <motion.div
                                     className={`h-full rounded-full transition-all duration-500 ${
                                         occupancyPercent >= 100
-                                            ? 'bg-green-500'
+                                            ? 'bg-emerald-500'
                                             : occupancyPercent > 0
                                                 ? 'bg-blue-500'
                                                 : 'bg-slate-200'
@@ -203,60 +249,62 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true }) {
                                     style={{ width: `${occupancyPercent}%` }}
                                 />
                             </motion.div>
+                            {occupantNames.length > 0 ? (
+                                <motion.div className="flex flex-wrap gap-1.5">
+                                    {occupantNames.map((name, i) => (
+                                        <span
+                                            key={i}
+                                            className="inline-flex rounded-full bg-slate-100/90 border border-slate-200/80 px-2.5 py-1 text-xs font-medium text-slate-800"
+                                        >
+                                            {name}
+                                        </span>
+                                    ))}
+                                </motion.div>
+                            ) : (
+                                <p className="text-xs text-slate-400">Nema prijavljenih gostiju</p>
+                            )}
                         </motion.div>
 
-                        {/* Guests */}
-                        {room.occupant_names?.length > 0 && (
-                            <motion.div className="flex flex-wrap gap-1.5 mb-3">
-                                {room.occupant_names.map((name, i) => (
-                                    <span
-                                        key={i}
-                                        className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700"
-                                    >
-                                        {name}
-                                    </span>
-                                ))}
-                            </motion.div>
-                        )}
-
-                        {/* Stay dates */}
+                        {/* Termin boravka — istaknuto (ljubičasta traka kao u preview tabeli) */}
                         {(room.stay_from || room.stay_to) && (
-                            <motion.div className="flex items-center gap-2 text-sm text-slate-700 bg-slate-100 rounded-lg px-3 py-2 mb-3">
-                                <Calendar className="w-4 h-4 text-violet-500 flex-shrink-0" />
-                                <span className="font-medium">
-                                    {formatStayDate(room.stay_from) || '?'} — {formatStayDate(room.stay_to) || '?'}
+                            <motion.div className="flex items-center gap-2.5 text-sm rounded-xl border border-violet-200/80 bg-gradient-to-r from-violet-50 to-purple-50 px-3.5 py-2.5 mb-3 shadow-sm">
+                                <Calendar className="w-4 h-4 text-violet-600 flex-shrink-0" />
+                                <span className="font-semibold text-violet-900 tabular-nums">
+                                    {formatStayDate(room.stay_from) || '?'}
+                                    <span className="text-violet-400 font-normal mx-1.5">—</span>
+                                    {formatStayDate(room.stay_to) || '?'}
                                 </span>
                             </motion.div>
                         )}
 
-                        {/* Visit log */}
+                        {/* Visit record */}
                         {visitHistory.length > 0 && (
-                            <motion.div className="bg-amber-50/90 border border-amber-200 rounded-lg px-3 py-2.5 mb-3">
+                            <motion.div className="bg-amber-50 border border-amber-200/90 rounded-xl px-3 py-2.5 mb-3 shadow-sm">
                                 <button
                                     type="button"
-                                    className="flex items-center justify-between w-full text-sm font-semibold text-amber-900 mb-2"
+                                    className="flex items-center justify-between w-full text-sm font-semibold text-amber-950 mb-1"
                                     onClick={() => setVisitExpanded((v) => !v)}
                                 >
                                     <span className="flex items-center gap-2">
-                                        <span className="w-5 h-5 rounded-md flex items-center justify-center bg-orange-500 flex-shrink-0">
+                                        <span className="w-5 h-5 rounded-md flex items-center justify-center bg-orange-500 flex-shrink-0 shadow-sm">
                                             <UserCheck className="w-3 h-3 text-white" />
                                         </span>
                                         Visit
-                                        <span className="text-xs font-medium text-amber-700">({visitHistory.length})</span>
+                                        <span className="text-xs font-semibold text-amber-800">({visitHistory.length})</span>
                                     </span>
                                     {visitExpanded ? (
-                                        <ChevronUp className="w-4 h-4 text-amber-600" />
+                                        <ChevronUp className="w-4 h-4 text-amber-700" />
                                     ) : (
-                                        <ChevronDown className="w-4 h-4 text-amber-600" />
+                                        <ChevronDown className="w-4 h-4 text-amber-700" />
                                     )}
                                 </button>
                                 {visitExpanded && (
-                                    <motion.div className="space-y-2.5">
+                                    <motion.div className="space-y-2 pt-1">
                                         {visitHistory.map((entry, i) => (
-                                            <motion.div key={i} className="border-l-2 border-orange-400 pl-2.5">
-                                                <p className="text-sm text-amber-950 leading-snug">{entry.text}</p>
+                                            <motion.div key={i} className="rounded-lg bg-white/70 border border-amber-100 px-2.5 py-2">
+                                                <p className="text-sm text-orange-800 font-medium leading-snug">{entry.text}</p>
                                                 {entry.timestamp && (
-                                                    <p className="text-xs text-orange-500 mt-0.5">
+                                                    <p className="text-xs text-orange-600 mt-1 tabular-nums">
                                                         {format(new Date(entry.timestamp), 'dd.MM.yyyy HH:mm')}
                                                     </p>
                                                 )}
@@ -267,24 +315,24 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true }) {
                             </motion.div>
                         )}
 
-                        {/* Excursion */}
+                        {/* Ekskurzija */}
                         {room.excursion && (
-                            <motion.div className="flex items-start gap-2 text-sm mb-3">
-                                <span className="w-5 h-5 rounded-md flex items-center justify-center bg-blue-500 flex-shrink-0">
+                            <motion.div className="flex items-start gap-2.5 text-sm mb-3">
+                                <span className="w-5 h-5 rounded-md flex items-center justify-center bg-blue-500 flex-shrink-0 shadow-sm">
                                     <Sailboat className="w-3 h-3 text-white" />
                                 </span>
-                                <p className="text-slate-600">
-                                    <span className="font-medium text-slate-700">Excursion: </span>
+                                <p className="text-slate-700 leading-snug pt-0.5">
+                                    <span className="font-semibold text-slate-800">Excursion: </span>
                                     {room.excursion}
                                 </p>
                             </motion.div>
                         )}
 
-                        {/* Footer — agencija / napomena (npr. PORTO TRAVEL) */}
+                        {/* Napomena / agencija (npr. PORTO TRAVEL) */}
                         {room.notes && (
-                            <motion.div className="flex items-center gap-2 pt-1 text-slate-500">
-                                <FileText className="w-3.5 h-3.5 flex-shrink-0" />
-                                <span className="text-xs font-semibold tracking-wide uppercase truncate">
+                            <motion.div className="flex items-start gap-2.5 pt-0.5 border-t border-slate-100 mt-1">
+                                <FileText className="w-3.5 h-3.5 flex-shrink-0 text-slate-500 mt-0.5" />
+                                <span className="text-xs font-semibold text-slate-700 leading-relaxed tracking-wide uppercase">
                                     {room.notes}
                                 </span>
                             </motion.div>
@@ -425,6 +473,15 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true }) {
                                 value={editData.excursion}
                                 onChange={(e) => setEditData({...editData, excursion: e.target.value})}
                                 className="h-20"
+                            />
+                        </motion.div>
+                        <motion.div className="space-y-2">
+                            <Label htmlFor="contact_phone">Telefon (kontakt)</Label>
+                            <Input
+                                id="contact_phone"
+                                value={editData.contact_phone}
+                                onChange={(e) => setEditData({ ...editData, contact_phone: e.target.value })}
+                                placeholder="npr. 063/1025533"
                             />
                         </motion.div>
                         <motion.div className="space-y-2">

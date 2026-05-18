@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { base44 } from '@/api/base44Client';
 import { cn } from "@/lib/utils";
 
-export default function FileUploader({ onDataExtracted }) {
+export default function FileUploader({ onDataExtracted, defaultLocation = null }) {
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [isExtracting, setIsExtracting] = useState(false);
@@ -52,17 +52,39 @@ export default function FileUploader({ onDataExtracted }) {
         setIsExtracting(true);
         setStatus('extracting');
 
-        const result = await base44.integrations.Core.ExtractDataFromUploadedFile({ file: newFile });
+        let result;
+        try {
+            result = await base44.integrations.Core.ExtractDataFromUploadedFile({ file: newFile });
+        } catch (err) {
+            setStatus('error');
+            alert(err?.message || 'Greška pri slanju PDF-a na server.');
+            setIsUploading(false);
+            setIsExtracting(false);
+            return;
+        }
 
         setIsUploading(false);
         setIsExtracting(false);
 
         if (result.status === 'success' && result.output) {
+            const output = result.output;
+            const entries = output.entries ?? (Array.isArray(output) ? output : []);
+            if (!entries.length) {
+                setStatus('error');
+                alert(
+                    'PDF je učitan, ali nije prepoznat nijedan red (soba / gost). ' +
+                    'Proverite format ili unesite sobe ručno.'
+                );
+                return;
+            }
             setStatus('success');
-            onDataExtracted(result.output.entries || result.output);
+            onDataExtracted({
+                entries,
+                location: defaultLocation || output.location || null,
+            });
         } else {
             setStatus('error');
-            alert('Failed to extract data: ' + (result.details || 'Unknown error'));
+            alert('Greška pri čitanju PDF-a: ' + (result.details || 'Nepoznata greška'));
         }
     };
 
@@ -131,8 +153,12 @@ export default function FileUploader({ onDataExtracted }) {
                             <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-4">
                                 <CheckCircle className="w-8 h-8 text-green-500" />
                             </div>
-                            <p className="text-green-600 font-medium mb-4">
-                                Data extracted successfully!
+                            <p className="text-green-600 font-medium mb-1">
+                                PDF je pročitan — pregledajte tabelu ispod.
+                            </p>
+                            <p className="text-slate-500 text-sm mb-4">
+                                Kliknite <strong>Import Data</strong> da se podaci sačuvaju
+                                {defaultLocation ? ` u lokaciji ${defaultLocation}` : ''}.
                             </p>
                             <Button variant="outline" onClick={reset}>
                                 Upload Another File

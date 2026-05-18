@@ -11,15 +11,24 @@ Aplikacija za predstavnike na destinaciji — **bez Base44**. Podaci su u **vaš
 ## Prvo pokretanje
 
 ```powershell
-cd "c:\Users\sea_b\Home sorter projekat"
+cd "c:\Users\Admin\Home-Sorter"
 npm install
 npm install --prefix server
-npm run setup --prefix server
+npm run setup:server
 ```
 
 Ovo kreira bazu i admin nalog:
 - **Email:** `admin@home-sorter.local`
 - **Lozinka:** `admin123`
+
+Ako dobijete **Port already in use** (3001 ili 5173), u korenu projekta:
+
+```powershell
+npm run ports:free
+npm run dev:all
+```
+
+Ili jednom: `npm run dev:all:clean`
 
 ## Svakodnevno pokretanje
 
@@ -37,10 +46,16 @@ npm run dev
 
 Otvorite **http://localhost:5173/login** i prijavite se.
 
-Ili jedna komanda (ako imate `concurrently`):
+Ili jedna komanda (API + Vite; **ne** pokreće Prisma svaki put — izbegava grešku `EPERM` na Windowsu ako je drugi Node zaključao DLL):
+
 ```powershell
-npm install
 npm run dev:all
+```
+
+Posle ažuriranja Prisma šeme ili prvog kloniranja, jednom:
+
+```powershell
+npm run dev:setup
 ```
 
 ## PDF import

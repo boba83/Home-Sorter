@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Building2, Calculator, Info, LayoutDashboard } from 'lucide-react';
 import { motion } from 'framer-motion';
 import UserProfileButton from '@/components/UserProfileButton';
+import NotificationBell from '@/components/NotificationBell';
 
 const apps = [
     {
@@ -46,7 +47,8 @@ const apps = [
 export default function Landing() {
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex flex-col p-8">
-          <div className="flex justify-end mb-4">
+          <div className="flex justify-end items-center gap-2 mb-4">
+            <NotificationBell variant="light" />
             <UserProfileButton />
           </div>
           <div className="flex-1 flex flex-col items-center justify-center">
@@ -59,24 +61,29 @@ export default function Landing() {
                 <p className="text-slate-500">Odaberite aplikaciju</p>
             </motion.div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-xl">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-lg items-stretch">
                 {apps.map((app, i) => {
                     const Icon = app.icon;
                     return (
                         <motion.div
                             key={app.to}
+                            className="h-full"
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: i * 0.1 }}
                         >
-                            <Link to={app.to}>
-                                <div className={`${app.bg} border border-slate-200 rounded-2xl p-8 flex flex-col items-center gap-4 hover:shadow-xl transition-all duration-300 cursor-pointer group hover:-translate-y-1`}>
-                                    <div className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${app.gradient} shadow-lg ${app.shadow} flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
-                                        <Icon className="w-8 h-8 text-white" />
+                            <Link to={app.to} className="block h-full">
+                                <div
+                                    className={`${app.bg} border border-slate-200 rounded-xl p-5 h-full flex flex-col items-center gap-3 hover:shadow-lg transition-all duration-300 cursor-pointer group hover:-translate-y-0.5`}
+                                >
+                                    <div
+                                        className={`w-14 h-14 shrink-0 rounded-xl bg-gradient-to-br ${app.gradient} shadow-md ${app.shadow} flex items-center justify-center group-hover:scale-105 transition-transform duration-300`}
+                                    >
+                                        <Icon className="w-7 h-7 text-white" />
                                     </div>
-                                    <div className="text-center">
-                                        <h2 className="text-lg font-bold text-slate-800">{app.label}</h2>
-                                        <p className="text-sm text-slate-500 mt-1">{app.description}</p>
+                                    <div className="text-center w-full min-h-[3.25rem] flex flex-col items-center justify-center">
+                                        <h2 className="text-base font-bold text-slate-800 leading-snug">{app.label}</h2>
+                                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{app.description}</p>
                                     </div>
                                 </div>
                             </Link>

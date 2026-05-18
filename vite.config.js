@@ -14,11 +14,23 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    strictPort: true,
+    host: true,
+    strictPort: false,
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.removeHeader('if-none-match');
+            proxyReq.removeHeader('if-modified-since');
+          });
+          proxy.on('proxyRes', (proxyRes) => {
+            delete proxyRes.headers['etag'];
+            delete proxyRes.headers['last-modified'];
+            proxyRes.headers['cache-control'] = 'no-store, no-cache, must-revalidate';
+          });
+        },
       },
     },
   },

@@ -4,11 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { Building2, DoorOpen, Users, ChevronRight, UserCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { motion } from 'framer-motion';
+export default function HouseCard({ house, rooms = [], userColor = 'slate', detailsScope = 'all' }) {
+    if (!house?.id) return null;
 
-export default function HouseCard({ house, rooms, userColor = 'slate' }) {
-    const occupiedRooms = rooms.filter(r => r.current_occupants > 0).length;
-    const totalOccupants = rooms.reduce((sum, r) => sum + (r.current_occupants || 0), 0);
+    const safeRooms = Array.isArray(rooms) ? rooms : [];
+    const houseName = (house?.name ?? 'Bez naziva').toString();
+    const occupiedRooms = safeRooms.filter((r) => (r.current_occupants || 0) > 0).length;
+    const totalOccupants = safeRooms.reduce((sum, r) => sum + (r.current_occupants || 0), 0);
 
     const colorClasses = {
         blue: 'border-blue-300 bg-blue-50/30',
@@ -22,16 +24,13 @@ export default function HouseCard({ house, rooms, userColor = 'slate' }) {
         slate: 'border-slate-200'
     };
 
-    const borderClass = house.responsible_person ? colorClasses[userColor] : colorClasses.slate;
+    const safeColor = colorClasses[userColor] ? userColor : 'slate';
+    const borderClass = house.responsible_person ? colorClasses[safeColor] : colorClasses.slate;
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-        >
-            <Link to={createPageUrl(`HouseDetails?id=${house.id}`)}>
-                <Card className={`group hover:shadow-lg transition-all duration-300 cursor-pointer border-2 ${borderClass} hover:shadow-${userColor}-200/50 relative`}>
+        <div>
+            <Link to={createPageUrl(`HouseDetails?id=${house.id}&scope=${detailsScope}`)}>
+                <Card className={`group hover:shadow-lg transition-all duration-300 cursor-pointer border-2 ${borderClass} relative`}>
                     <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
@@ -40,7 +39,7 @@ export default function HouseCard({ house, rooms, userColor = 'slate' }) {
                                 </div>
                                 <div>
                                     <h3 className="font-semibold text-lg text-slate-800 group-hover:text-blue-600 transition-colors">
-                                        {house.name}
+                                        {houseName}
                                     </h3>
                                     {house.address && (
                                         <p className="text-sm text-slate-500">{house.address}</p>
@@ -62,7 +61,7 @@ export default function HouseCard({ house, rooms, userColor = 'slate' }) {
                                 <DoorOpen className="w-4 h-4 text-slate-400" />
                                 <span className="text-sm">
                                     <span className="font-semibold text-slate-700">{occupiedRooms}</span>
-                                    <span className="text-slate-400">/{rooms.length}</span>
+                                    <span className="text-slate-400">/{safeRooms.length}</span>
                                     <span className="text-slate-500 ml-1">rooms</span>
                                 </span>
                             </div>
@@ -70,29 +69,29 @@ export default function HouseCard({ house, rooms, userColor = 'slate' }) {
                                 <Users className="w-4 h-4 text-slate-400" />
                                 <span className="text-sm">
                                     <span className="font-semibold text-slate-700">{totalOccupants}</span>
-                                    <span className="text-slate-400">/{house.total_capacity || rooms.reduce((s, r) => s + (r.capacity || 0), 0)}</span>
+                                    <span className="text-slate-400">/{house.total_capacity || safeRooms.reduce((s, r) => s + (r.capacity || 0), 0)}</span>
                                     <span className="text-slate-500 ml-1">persons</span>
                                 </span>
                             </div>
                         </div>
 
-                        {rooms.length > 0 && (
+                        {safeRooms.length > 0 && (
                             <div className="mt-4 flex flex-wrap gap-2">
-                                {rooms.slice(0, 5).map(room => (
-                                    <Badge 
-                                        key={room.id} 
+                                {safeRooms.slice(0, 5).map((room) => (
+                                    <Badge
+                                        key={room.id}
                                         variant="outline"
-                                        className={room.current_occupants > 0 
-                                            ? "bg-green-50 text-green-700 border-green-200" 
+                                        className={room.current_occupants > 0
+                                            ? "bg-green-50 text-green-700 border-green-200"
                                             : "bg-slate-50 text-slate-500 border-slate-200"
                                         }
                                     >
                                         Room {room.room_number}
                                     </Badge>
                                 ))}
-                                {rooms.length > 5 && (
+                                {safeRooms.length > 5 && (
                                     <Badge variant="secondary">
-                                        +{rooms.length - 5} more
+                                        +{safeRooms.length - 5} more
                                     </Badge>
                                 )}
                             </div>
@@ -100,6 +99,7 @@ export default function HouseCard({ house, rooms, userColor = 'slate' }) {
                     </CardContent>
                 </Card>
             </Link>
-        </motion.div>
+        </div>
     );
 }
+

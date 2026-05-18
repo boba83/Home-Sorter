@@ -13,10 +13,11 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 
-const LABEL_OPTIONS = ['Hitno', 'Bug', 'Feature', 'Design', 'Ostalo'];
+import { LABEL_OPTIONS, LABEL_COLORS } from './taskLabels';
+
 const EPIC_COLORS = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2'];
 
-export default function TaskDetailModal({ task, users = [], onClose, onSave, onDelete }) {
+export default function TaskDetailModal({ task, users = [], currentUserEmail = '', readOnly = false, onClose, onSave, onDelete }) {
   const [form, setForm] = useState({
     title: task.title || '',
     description: task.description || '',
@@ -81,13 +82,14 @@ export default function TaskDetailModal({ task, users = [], onClose, onSave, onD
       ...prev,
       comments: [
         ...prev.comments,
-        { text: newComment.trim(), author: '', created_at: new Date().toISOString() },
+        { text: newComment.trim(), author: currentUserEmail || '', created_at: new Date().toISOString() },
       ],
     }));
     setNewComment('');
   };
 
   const handleSave = () => {
+    if (readOnly || !onSave) return;
     onSave({
       title: form.title,
       description: form.description || undefined,
@@ -106,7 +108,7 @@ export default function TaskDetailModal({ task, users = [], onClose, onSave, onD
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0">
         <DialogHeader className="px-5 py-4 border-b border-slate-200">
-          <DialogTitle>Detalji zadatka</DialogTitle>
+          <DialogTitle>{readOnly ? 'Pregled zadatka' : 'Detalji zadatka'}</DialogTitle>
         </DialogHeader>
 
         <ModalScrollArea>
@@ -116,6 +118,7 @@ export default function TaskDetailModal({ task, users = [], onClose, onSave, onD
               <Input
                 id="task-title"
                 value={form.title}
+                disabled={readOnly}
                 onChange={e => setForm(prev => ({ ...prev, title: e.target.value }))}
               />
             </div>
@@ -127,6 +130,7 @@ export default function TaskDetailModal({ task, users = [], onClose, onSave, onD
                 rows={3}
                 className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={form.description}
+                disabled={readOnly}
                 onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
               />
             </div>
@@ -171,6 +175,7 @@ export default function TaskDetailModal({ task, users = [], onClose, onSave, onD
                     <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50 rounded px-2 py-1">
                       <Checkbox
                         checked={form.assigned_users.includes(u.email)}
+                        disabled={readOnly}
                         onCheckedChange={() => toggleAssignee(u.email)}
                       />
                       <span>{u.full_name || u.email}</span>
@@ -201,14 +206,22 @@ export default function TaskDetailModal({ task, users = [], onClose, onSave, onD
         </ModalScrollArea>
 
         <DialogFooter className="px-5 py-4 border-t border-slate-200 flex-row justify-between sm:justify-between">
-          <Button type="button" variant="destructive" size="sm" onClick={onDelete}>
-            <Trash2 className="w-4 h-4 mr-1" />
-            Obriši
-          </Button>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>Otkaži</Button>
-            <Button type="button" onClick={handleSave} disabled={!form.title.trim()}>Sačuvaj</Button>
-          </div>
+          {!readOnly && onDelete ? (
+            <Button type="button" variant="destructive" size="sm" onClick={onDelete}>
+              <Trash2 className="w-4 h-4 mr-1" />
+              Obriši
+            </Button>
+          ) : (
+            <span />
+          )}
+          <span className="flex gap-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              {readOnly ? 'Zatvori' : 'Otkaži'}
+            </Button>
+            {!readOnly && (
+              <Button type="button" onClick={handleSave} disabled={!form.title.trim()}>Sačuvaj</Button>
+            )}
+          </span>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -227,20 +240,24 @@ function LabelsSection({ form, toggleLabel }) {
         Labele
       </Label>
       <div className="flex flex-wrap gap-2">
-        {LABEL_OPTIONS.map(label => (
-          <button
-            key={label}
-            type="button"
-            onClick={() => toggleLabel(label)}
-            className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-              form.labels.includes(label)
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+        {LABEL_OPTIONS.map((label) => {
+          const selected = form.labels.includes(label);
+          const color = LABEL_COLORS[label] || 'bg-slate-400 text-white';
+          return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => toggleLabel(label)}
+              className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                selected
+                  ? `${color} border-transparent`
+                  : 'bg-slate-50 text-slate-600 border-slate-200 hover:border-slate-300'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

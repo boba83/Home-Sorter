@@ -1,30 +1,46 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
+import { api } from '@/api/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Building2, Edit2, ArrowLeft, Loader2, Trash2, UserPlus, Shield, User } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Users, Building2, Edit2, ArrowLeft, Loader2, Trash2, UserPlus, Shield, User, Copy, KeyRound } from 'lucide-react';
+import { Link, Navigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
 export default function UserManagement() {
     const queryClient = useQueryClient();
     const [isAssigning, setIsAssigning] = useState(false);
     const [selectedHouse, setSelectedHouse] = useState(null);
-    const [selectedPerson, setSelectedPerson] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     
     // User management states
     const [isEditingUser, setIsEditingUser] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
-    const [userFormData, setUserFormData] = useState({ full_name: '', role: 'user' });
+    const [userFormData, setUserFormData] = useState({
+        first_name: '',
+        last_name: '',
+        role: 'user',
+        can_access_all_houses: false,
+    });
+    const [isAddingUser, setIsAddingUser] = useState(false);
+    const [newUserForm, setNewUserForm] = useState({
+        email: '',
+        first_name: '',
+        last_name: '',
+        role: 'user',
+    });
+    const [createdCredentials, setCreatedCredentials] = useState(null);
+    const [adminTempPassword, setAdminTempPassword] = useState('');
+    const [selectedMemberIds, setSelectedMemberIds] = useState([]);
 
     const { data: houses, isLoading } = useQuery({
         queryKey: ['houses'],
@@ -43,38 +59,98 @@ export default function UserManagement() {
 
     const isAdmin = currentUser?.role === 'admin';
 
-    // Get responsible persons from users list
-    const RESPONSIBLE_PERSONS = (users || []).map(u => u.full_name).filter(Boolean);
+    if (currentUser && !isAdmin) {
+        return <Navigate to={createPageUrl('Home')} replace />;
+    }
 
     const handleAssign = (house) => {
         setSelectedHouse(house);
-        setSelectedPerson(house.responsible_person || '');
+        setSelectedMemberIds(house.member_user_ids || []);
         setIsAssigning(true);
     };
 
     const handleSave = async () => {
         setIsSaving(true);
-        await base44.entities.House.update(selectedHouse.id, {
-            responsible_person: selectedPerson
-        });
+        await api.houses.setMembers(selectedHouse.id, selectedMemberIds);
         queryClient.invalidateQueries({ queryKey: ['houses'] });
         setIsSaving(false);
         setIsAssigning(false);
     };
 
-    const getHousesByPerson = (person) => {
-        return (houses || []).filter(h => h.responsible_person === person);
+    const getHousesByUserId = (userId) => {
+        return (houses || []).filter(h => (h.member_user_ids || []).includes(userId));
+    };
+
+    const handleCreateUser = async () => {
+        if (!newUserForm.email.trim()) return;
+        setIsSaving(true);
+        setCreatedCredentials(null);
+        try {
+            const result = await base44.entities.User.createAccount({
+                email: newUserForm.email.trim(),
+                role: newUserForm.role,
+                can_access_all_houses: newUserForm.role !== 'admin' && newUserForm.can_access_all_houses,
+                first_name: newUserForm.first_name.trim() || undefined,
+                last_name: newUserForm.last_name.trim() || undefined,
+            });
+            setCreatedCredentials({
+                email: result.user?.email || newUserForm.email.trim(),
+                temporary_password: result.temporary_password,
+            });
+            setNewUserForm({ email: '', first_name: '', last_name: '', role: 'user', can_access_all_houses: false });
+            queryClient.invalidateQueries({ queryKey: ['users'] });
+        } catch (e) {
+            alert(e.message || 'Korisnik nije kreiran');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleAdminResetPassword = async () => {
+        if (!selectedUser?.id) return;
+        if (!confirm(`Generisati novu privremenu lozinku za ${selectedUser.email}?`)) return;
+        setIsSaving(true);
+        setAdminTempPassword('');
+        try {
+            const result = await base44.entities.User.resetPassword(selectedUser.id);
+            setAdminTempPassword(result.temporary_password || '');
+        } catch (e) {
+            alert(e.message || 'Lozinka nije promenjena');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const roleBadgeClass = (role) => {
+        if (role === 'admin') return 'bg-purple-100 text-purple-700 border-purple-200';
+        if (role === 'viewer') return 'bg-amber-100 text-amber-800 border-amber-200';
+        return 'bg-slate-100 text-slate-700 border-slate-200';
+    };
+
+    const userLabel = (user) => {
+        const parts = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim();
+        return parts || user?.full_name || user?.email || '-';
     };
 
     const handleEditUser = (user) => {
         setSelectedUser(user);
-        setUserFormData({ full_name: user.full_name || '', role: user.role || 'user' });
+        setAdminTempPassword('');
+        setUserFormData({
+            first_name: user.first_name || '',
+            last_name: user.last_name || '',
+            role: user.role || 'user',
+            can_access_all_houses: Boolean(user.can_access_all_houses),
+        });
         setIsEditingUser(true);
     };
 
     const handleSaveUser = async () => {
         setIsSaving(true);
-        await base44.entities.User.update(selectedUser.id, userFormData);
+        await base44.entities.User.update(selectedUser.id, {
+            ...userFormData,
+            can_access_all_houses:
+                userFormData.role === 'admin' ? false : Boolean(userFormData.can_access_all_houses),
+        });
         queryClient.invalidateQueries({ queryKey: ['users'] });
         setIsSaving(false);
         setIsEditingUser(false);
@@ -125,17 +201,20 @@ export default function UserManagement() {
                                         <Users className="w-5 h-5 text-purple-500" />
                                         All Users
                                     </CardTitle>
-                                    <p className="text-sm text-slate-500">
-                                        To add new users, use the invite function in Dashboard → Users
-                                    </p>
+                                    <Button size="sm" onClick={() => { setCreatedCredentials(null); setIsAddingUser(true); }}>
+                                        <UserPlus className="w-4 h-4 mr-1" />
+                                        Dodaj korisnika
+                                    </Button>
                                 </div>
                             </CardHeader>
                             <CardContent className="p-0">
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
-                                            <TableHead>Name</TableHead>
+                                            <TableHead>Ime</TableHead>
+                                            <TableHead>Prezime</TableHead>
                                             <TableHead>Email</TableHead>
+                                            <TableHead>Prikazano kao</TableHead>
                                             <TableHead>Role</TableHead>
                                             <TableHead>Assigned Houses</TableHead>
                                             {isAdmin && <TableHead className="w-24">Actions</TableHead>}
@@ -144,22 +223,21 @@ export default function UserManagement() {
                                     <TableBody>
                                         {usersLoading ? (
                                             <TableRow>
-                                                <TableCell colSpan={5} className="text-center py-8">
+                                                <TableCell colSpan={isAdmin ? 8 : 7} className="text-center py-8">
                                                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" />
                                                 </TableCell>
                                             </TableRow>
                                         ) : users?.length > 0 ? (
                                             users.map(user => {
-                                                const userHouses = getHousesByPerson(user.full_name);
+                                                const userHouses = getHousesByUserId(user.id);
                                                 return (
                                                     <TableRow key={user.id}>
-                                                        <TableCell className="font-medium">{user.full_name || '-'}</TableCell>
+                                                        <TableCell className="font-medium">{user.first_name || '—'}</TableCell>
+                                                        <TableCell className="font-medium">{user.last_name || '—'}</TableCell>
                                                         <TableCell className="text-slate-500">{user.email}</TableCell>
+                                                        <TableCell className="text-slate-600 text-sm">{userLabel(user)}</TableCell>
                                                         <TableCell>
-                                                            <Badge className={user.role === 'admin' 
-                                                                ? "bg-purple-100 text-purple-700 border-purple-200" 
-                                                                : "bg-slate-100 text-slate-700 border-slate-200"
-                                                            }>
+                                                            <Badge className={roleBadgeClass(user.role)}>
                                                                 <Shield className="w-3 h-3 mr-1" />
                                                                 {user.role || 'user'}
                                                             </Badge>
@@ -213,18 +291,19 @@ export default function UserManagement() {
                     <TabsContent value="assignments">
                         {/* Summary Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                            {RESPONSIBLE_PERSONS.map(person => {
-                                const personHouses = getHousesByPerson(person);
+                            {(users || []).map(u => {
+                                const personHouses = getHousesByUserId(u.id);
+                                const label = userLabel(u);
                                 return (
-                                    <Card key={person} className="border-slate-200">
+                                    <Card key={u.id} className="border-slate-200">
                                         <CardContent className="p-4">
                                             <div className="flex items-center gap-3 mb-3">
                                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-500 flex items-center justify-center text-white font-semibold">
-                                                    {person?.[0] || '?'}
+                                                    {label?.[0] || '?'}
                                                 </div>
                                                 <div>
-                                                    <h3 className="font-semibold text-slate-800">{person}</h3>
-                                                    <p className="text-sm text-slate-500">{personHouses.length} houses</p>
+                                                    <h3 className="font-semibold text-slate-800">{label}</h3>
+                                                    <p className="text-sm text-slate-500">{personHouses.length} kuća</p>
                                                 </div>
                                             </div>
                                             {personHouses.length > 0 && (
@@ -257,14 +336,14 @@ export default function UserManagement() {
                                             <TableHead>House</TableHead>
                                             <TableHead>Address</TableHead>
                                             <TableHead>Rooms</TableHead>
-                                            <TableHead>Responsible Person</TableHead>
+                                            <TableHead>Dodeljeni korisnici</TableHead>
                                             <TableHead className="w-20"></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {isLoading ? (
                                             <TableRow>
-                                                <TableCell colSpan={5} className="text-center py-8">
+                                                <TableCell colSpan={isAdmin ? 8 : 7} className="text-center py-8">
                                                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-slate-400" />
                                                 </TableCell>
                                             </TableRow>
@@ -275,12 +354,19 @@ export default function UserManagement() {
                                                     <TableCell className="text-slate-500">{house.address || '-'}</TableCell>
                                                     <TableCell>{house.total_rooms || 0}</TableCell>
                                                     <TableCell>
-                                                        {house.responsible_person ? (
-                                                            <Badge className="bg-blue-100 text-blue-700 border-blue-200">
-                                                                {house.responsible_person}
-                                                            </Badge>
+                                                        {(house.member_user_ids || []).length > 0 ? (
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {(house.member_user_ids || []).map(uid => {
+                                                                    const u = (users || []).find(x => x.id === uid);
+                                                                    return (
+                                                                        <Badge key={uid} className="bg-blue-100 text-blue-700 border-blue-200 text-xs">
+                                                                            {u ? userLabel(u) : uid}
+                                                                        </Badge>
+                                                                    );
+                                                                })}
+                                                            </div>
                                                         ) : (
-                                                            <span className="text-slate-400">Not assigned</span>
+                                                            <span className="text-slate-400">Niko</span>
                                                         )}
                                                     </TableCell>
                                                     <TableCell>
@@ -309,23 +395,28 @@ export default function UserManagement() {
             <Dialog open={isAssigning} onOpenChange={setIsAssigning}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Assign Responsible Person</DialogTitle>
+                        <DialogTitle>Dodela kuće korisnicima</DialogTitle>
                     </DialogHeader>
                     <div className="py-4">
                         <Label>House: <span className="font-semibold">{selectedHouse?.name}</span></Label>
                         <div className="mt-4 space-y-2">
-                            <Label htmlFor="person">Responsible Person</Label>
-                            <Select value={selectedPerson} onValueChange={setSelectedPerson}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select a person" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value={null}>None</SelectItem>
-                                    {RESPONSIBLE_PERSONS.map(person => (
-                                        <SelectItem key={person} value={person}>{person}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <Label>Korisnici na kući</Label>
+                            <section className="max-h-48 overflow-y-auto space-y-1 border rounded-lg p-2 mt-2">
+                                {(users || []).filter(u => u.role !== 'admin').map(u => (
+                                    <label key={u.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50 rounded px-2 py-1">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedMemberIds.includes(u.id)}
+                                            onChange={() => {
+                                                setSelectedMemberIds(prev =>
+                                                    prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id]
+                                                );
+                                            }}
+                                        />
+                                        <span>{userLabel(u)} ({u.role})</span>
+                                    </label>
+                                ))}
+                            </section>
                         </div>
                     </div>
                     <DialogFooter>
@@ -346,32 +437,158 @@ export default function UserManagement() {
                     </DialogHeader>
                     <div className="py-4 space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="userName">Full Name</Label>
+                            <Label htmlFor="userEmail">Email</Label>
                             <Input
-                                id="userName"
-                                value={userFormData.full_name}
-                                onChange={(e) => setUserFormData({...userFormData, full_name: e.target.value})}
+                                id="userEmail"
+                                value={selectedUser?.email || ''}
+                                readOnly
+                                disabled
+                                className="bg-slate-50"
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="userRole">Role</Label>
+                            <Label htmlFor="userFirst">Ime (opciono)</Label>
+                            <Input
+                                id="userFirst"
+                                value={userFormData.first_name}
+                                onChange={(e) => setUserFormData({ ...userFormData, first_name: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="userLast">Prezime (opciono)</Label>
+                            <Input
+                                id="userLast"
+                                value={userFormData.last_name}
+                                onChange={(e) => setUserFormData({ ...userFormData, last_name: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="userRole">Uloga</Label>
                             <Select value={userFormData.role} onValueChange={(value) => setUserFormData({...userFormData, role: value})}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Select a role" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="user">User</SelectItem>
                                     <SelectItem value="admin">Admin</SelectItem>
+                                    <SelectItem value="user">Korisnik</SelectItem>
+                                    <SelectItem value="viewer">Pregledač</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
+                        {userFormData.role !== 'admin' && (
+                            <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 cursor-pointer">
+                                <Checkbox
+                                    checked={userFormData.can_access_all_houses}
+                                    onCheckedChange={(checked) =>
+                                        setUserFormData({ ...userFormData, can_access_all_houses: checked === true })
+                                    }
+                                />
+                                <span className="text-sm">
+                                    <span className="font-medium text-slate-800">Pristup svim kućama</span>
+                                    <span className="block text-slate-500 mt-0.5">
+                                        Može da bira „Svi korisnici“ na početnoj stranici i da menja sve kuće, ne samo dodeljene.
+                                    </span>
+                                </span>
+                            </label>
+                        )}
+                        <section className="pt-3 border-t border-slate-200 space-y-2">
+                            <Label className="text-sm">Lozinka</Label>
+                            <Button type="button" variant="outline" size="sm" className="w-full" onClick={handleAdminResetPassword} disabled={isSaving}>
+                                <KeyRound className="w-4 h-4 mr-2" />
+                                Generiši novu privremenu lozinku
+                            </Button>
+                            {adminTempPassword && (
+                                <section className="rounded-lg bg-amber-50 border border-amber-200 p-3">
+                                    <p className="font-mono text-lg select-all">{adminTempPassword}</p>
+                                    <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => navigator.clipboard?.writeText(adminTempPassword)}>
+                                        <Copy className="w-3 h-3 mr-1" /> Kopiraj
+                                    </Button>
+                                </section>
+                            )}
+                        </section>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditingUser(false)}>Cancel</Button>
+                        <Button variant="outline" onClick={() => setIsEditingUser(false)}>Otkaži</Button>
                         <Button onClick={handleSaveUser} disabled={isSaving}>
                             {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                            Save
+                            Sačuvaj
                         </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isAddingUser} onOpenChange={setIsAddingUser}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Dodaj korisnika</DialogTitle>
+                    </DialogHeader>
+                    <section className="py-4 space-y-4">
+                        <p className="text-sm text-slate-500">
+                            Samo dodati korisnici mogu da se prijave. Prosledite im email i privremenu lozinku.
+                        </p>
+                        {createdCredentials ? (
+                            <section className="rounded-lg bg-green-50 border border-green-200 p-4 space-y-2">
+                                <p className="text-green-900 font-medium">Nalog kreiran</p>
+                                <p className="text-sm">Email: <strong>{createdCredentials.email}</strong></p>
+                                <p className="font-mono text-xl text-green-950 select-all">{createdCredentials.temporary_password}</p>
+                                <Button type="button" size="sm" variant="outline" onClick={() => navigator.clipboard?.writeText(`Email: ${createdCredentials.email}\nLozinka: ${createdCredentials.temporary_password}`)}>
+                                    <Copy className="w-3 h-3 mr-1" /> Kopiraj podatke za prijavu
+                                </Button>
+                            </section>
+                        ) : (
+                            <>
+                                <label className="space-y-1 block">
+                                    <span className="text-sm font-medium">Email *</span>
+                                    <Input type="email" value={newUserForm.email} onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })} />
+                                </label>
+                                <label className="space-y-1 block">
+                                    <span className="text-sm font-medium">Ime (opciono)</span>
+                                    <Input value={newUserForm.first_name} onChange={(e) => setNewUserForm({ ...newUserForm, first_name: e.target.value })} />
+                                </label>
+                                <label className="space-y-1 block">
+                                    <span className="text-sm font-medium">Prezime (opciono)</span>
+                                    <Input value={newUserForm.last_name} onChange={(e) => setNewUserForm({ ...newUserForm, last_name: e.target.value })} />
+                                </label>
+                                <label className="space-y-1 block">
+                                    <span className="text-sm font-medium">Uloga</span>
+                                    <Select value={newUserForm.role} onValueChange={(role) => setNewUserForm({ ...newUserForm, role })}>
+                                        <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="user">Korisnik</SelectItem>
+                                            <SelectItem value="viewer">Pregledač</SelectItem>
+                                            <SelectItem value="admin">Admin</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </label>
+                                {newUserForm.role !== 'admin' && (
+                                    <label className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 cursor-pointer">
+                                        <Checkbox
+                                            checked={newUserForm.can_access_all_houses}
+                                            onCheckedChange={(checked) =>
+                                                setNewUserForm({ ...newUserForm, can_access_all_houses: checked === true })
+                                            }
+                                        />
+                                        <span className="text-sm">
+                                            <span className="font-medium text-slate-800">Pristup svim kućama</span>
+                                            <span className="block text-slate-500 mt-0.5">
+                                                Vidi i menja sve kuće kada izabere „Svi korisnici“ na početnoj.
+                                            </span>
+                                        </span>
+                                    </label>
+                                )}
+                            </>
+                        )}
+                    </section>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setIsAddingUser(false); setCreatedCredentials(null); }}>
+                            {createdCredentials ? 'Zatvori' : 'Otkaži'}
+                        </Button>
+                        {!createdCredentials && (
+                            <Button onClick={handleCreateUser} disabled={isSaving || !newUserForm.email.trim()}>
+                                {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                Kreiraj nalog
+                            </Button>
+                        )}
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

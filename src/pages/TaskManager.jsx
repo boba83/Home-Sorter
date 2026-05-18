@@ -11,6 +11,7 @@ import TaskDetailModal from '@/components/taskmanager/TaskDetailModal';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { Bell, BellOff } from 'lucide-react';
 import UserProfileButton from '@/components/UserProfileButton';
+import NotificationBell from '@/components/NotificationBell';
 
 export default function TaskManager() {
   const queryClient = useQueryClient();
@@ -19,12 +20,16 @@ export default function TaskManager() {
   const [newColumnName, setNewColumnName] = useState('');
   const [selectedTask, setSelectedTask] = useState(null);
   const [users, setUsers] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
 
   // Fetch users (admin only, ignore errors for regular users)
+  const canEdit = currentUser?.role === 'admin' || currentUser?.role === 'user';
+
   useEffect(() => {
     base44.auth.me().then(me => {
-      if (me?.role === 'admin') {
-        base44.entities.User.list().then(setUsers).catch(() => {});
+      setCurrentUser(me);
+      if (me?.role === 'admin' || me?.role === 'user') {
+        base44.entities.User.assignable().then(setUsers).catch(() => {});
       }
     }).catch(() => {});
   }, []);
@@ -79,6 +84,8 @@ export default function TaskManager() {
     mutationFn: ({ id, data }) => base44.entities.Task.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread'] });
       setSelectedTask(null);
     },
   });
@@ -116,6 +123,39 @@ export default function TaskManager() {
   const getColumnTasks = (columnId) =>
     tasks.filter(t => t.column_id === columnId).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
+  let addColumnUi = null;
+  if (canEdit) {
+    if (addingColumn) {
+      addColumnUi = (
+        <div className="bg-slate-100 rounded-2xl p-3 space-y-2">
+          <Input
+            autoFocus
+            value={newColumnName}
+            onChange={e => setNewColumnName(e.target.value)}
+            placeholder="Naziv kolone..."
+            className="bg-white"
+            onKeyDown={e => { if (e.key === 'Enter') handleAddColumn(); if (e.key === 'Escape') setAddingColumn(false); }}
+          />
+          <span className="flex gap-2">
+            <Button size="sm" onClick={handleAddColumn} className="flex-1">Dodaj kolonu</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAddingColumn(false)} className="text-slate-500">Otkaži</Button>
+          </span>
+        </div>
+      );
+    } else {
+      addColumnUi = (
+        <button
+          type="button"
+          onClick={() => setAddingColumn(true)}
+          className="w-full flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white rounded-2xl px-4 py-3 text-sm font-medium transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          Dodaj kolonu
+        </button>
+      );
+    }
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
@@ -134,6 +174,7 @@ export default function TaskManager() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <NotificationBell variant="dark" />
           <button
             onClick={requestPermission}
             title={permission === 'granted' ? 'Notifikacije uključene' : 'Uključi notifikacije'}
@@ -149,7 +190,7 @@ export default function TaskManager() {
       </div>
 
       {/* Board */}
-      <DragDropContext onDragEnd={handleDragEnd}>
+      <DragDropContext onDragEnd={canEdit ? handleDragEnd : () => {}}>
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', padding: '0 20px 20px' }}>
           <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', paddingTop: '8px', paddingBottom: '8px' }}>
             {columns.map(col => (
@@ -157,39 +198,16 @@ export default function TaskManager() {
                 key={col.id}
                 column={col}
                 tasks={getColumnTasks(col.id)}
-                onAddTask={(columnId, title) => createTask.mutate({ columnId, title })}
+                onAddTask={canEdit ? (columnId, title) => createTask.mutate({ columnId, title }) : undefined}
                 onCardClick={setSelectedTask}
-                onDeleteColumn={(id) => deleteColumn.mutate(id)}
-                onRenameColumn={(id, name) => renameColumn.mutate({ id, name })}
+                onDeleteColumn={canEdit ? (id) => deleteColumn.mutate(id) : undefined}
+                onRenameColumn={canEdit ? (id, name) => renameColumn.mutate({ id, name }) : undefined}
               />
             ))}
 
             {/* Add Column */}
             <div className="flex-shrink-0 w-72">
-              {addingColumn ? (
-                <div className="bg-slate-100 rounded-2xl p-3 space-y-2">
-                  <Input
-                    autoFocus
-                    value={newColumnName}
-                    onChange={e => setNewColumnName(e.target.value)}
-                    placeholder="Naziv kolone..."
-                    className="bg-white"
-                    onKeyDown={e => { if (e.key === 'Enter') handleAddColumn(); if (e.key === 'Escape') setAddingColumn(false); }}
-                  />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={handleAddColumn} className="flex-1">Dodaj kolonu</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setAddingColumn(false)} className="text-slate-500">Otkaži</Button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setAddingColumn(true)}
-                  className="w-full flex items-center gap-2 bg-white/20 hover:bg-white/30 text-white rounded-2xl px-4 py-3 text-sm font-medium transition-colors"
-                >
-                  <Plus className="w-5 h-5" />
-                  Dodaj kolonu
-                </button>
-              )}
+                {addColumnUi}
             </div>
           </div>
         </div>
@@ -200,9 +218,11 @@ export default function TaskManager() {
         <TaskDetailModal
           task={selectedTask}
           users={users}
+          currentUserEmail={currentUser?.email}
+          readOnly={!canEdit}
           onClose={() => setSelectedTask(null)}
-          onSave={(data) => updateTask.mutate({ id: selectedTask.id, data })}
-          onDelete={() => deleteTask.mutate(selectedTask.id)}
+          onSave={canEdit ? (data) => updateTask.mutate({ id: selectedTask.id, data }) : undefined}
+          onDelete={canEdit ? () => deleteTask.mutate(selectedTask.id) : undefined}
         />
       )}
     </div>

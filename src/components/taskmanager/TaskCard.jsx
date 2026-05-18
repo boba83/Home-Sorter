@@ -1,14 +1,7 @@
 import React from 'react';
-import { Calendar, Tag, User, CheckSquare } from 'lucide-react';
+import { Calendar, CheckSquare } from 'lucide-react';
 import { format } from 'date-fns';
-
-const LABEL_COLORS = {
-  'Hitno': 'bg-red-500',
-  'Bug': 'bg-orange-500',
-  'Feature': 'bg-blue-500',
-  'Design': 'bg-purple-500',
-  'Ostalo': 'bg-gray-500',
-};
+import { LABEL_COLORS } from './taskLabels';
 
 export default function TaskCard({ task, onClick, dragHandleProps = {}, draggableProps = {}, innerRef }) {
   const doneCount = (task.checklists || []).filter(c => c.done).length;
@@ -35,7 +28,7 @@ export default function TaskCard({ task, onClick, dragHandleProps = {}, draggabl
       {(task.labels || []).length > 0 && (
         <div className="flex flex-wrap gap-1 mb-2">
           {task.labels.map((label, i) => (
-            <span key={i} className={`${LABEL_COLORS[label] || 'bg-gray-400'} text-white text-xs px-2 py-0.5 rounded-full`}>
+            <span key={i} className={`${LABEL_COLORS[label] || 'bg-slate-400 text-white'} text-xs px-2 py-0.5 rounded-full`}>
               {label}
             </span>
           ))}

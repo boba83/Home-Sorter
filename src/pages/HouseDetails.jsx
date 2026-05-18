@@ -16,7 +16,7 @@ const ALL_LOCATIONS = [
 ];
 import { Badge } from "@/components/ui/badge";
 import { Link } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
+import { createPageUrl, isHouseAssignedToUser } from '@/utils';
 import RoomCard from '@/components/RoomCard';
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from 'framer-motion';
@@ -24,6 +24,8 @@ import { motion } from 'framer-motion';
 export default function HouseDetails() {
     const urlParams = new URLSearchParams(window.location.search);
     const houseId = urlParams.get('id');
+    const viewScope = urlParams.get('scope') || 'all';
+    const filterUserId = urlParams.get('userId');
     const queryClient = useQueryClient();
 
     const [isEditingHouse, setIsEditingHouse] = useState(false);
@@ -37,29 +39,60 @@ export default function HouseDetails() {
         capacity: 1
     });
 
-    const { data: house, isLoading: houseLoading } = useQuery({
+    const { data: house, isLoading: houseLoading, error: houseError } = useQuery({
         queryKey: ['house', houseId],
         queryFn: async () => {
             const houses = await base44.entities.House.filter({ id: houseId });
-            return houses[0];
+            return houses[0] ?? null;
         },
         enabled: !!houseId
     });
 
-    const { data: rooms, isLoading: roomsLoading } = useQuery({
+    const { data: rooms, isLoading: roomsLoading, error: roomsError } = useQuery({
         queryKey: ['rooms', houseId],
         queryFn: () => base44.entities.Room.filter({ house_id: houseId }),
         enabled: !!houseId
     });
+
+    const roomList = Array.isArray(rooms) ? rooms : [];
 
     const { data: currentUser } = useQuery({
         queryKey: ['currentUser'],
         queryFn: () => base44.auth.me(),
     });
 
+    const { data: assignableUsers = [] } = useQuery({
+        queryKey: ['assignableUsers'],
+        queryFn: () => base44.entities.User.assignable(),
+        enabled: Boolean(currentUser?.can_access_all_houses || currentUser?.role === 'admin'),
+    });
+
+    const filterUser = filterUserId
+        ? (assignableUsers || []).find((u) => u.id === filterUserId)
+        : null;
+
     const isAdmin = currentUser?.role === 'admin';
-    const isResponsible = house?.responsible_person && currentUser?.full_name === house?.responsible_person;
-    const canEdit = isAdmin || isResponsible;
+    const isUser = currentUser?.role === 'user';
+    const canAccessAllHouses = Boolean(currentUser?.can_access_all_houses);
+    const memberIds = house?.member_user_ids || [];
+    const isHouseMember = currentUser?.id && memberIds.includes(currentUser.id);
+    const isResponsible = house?.responsible_person && currentUser?.full_name === house.responsible_person;
+    const assignedToFilterUser =
+        viewScope === 'user' && filterUser && house
+            ? isHouseAssignedToUser(house, filterUser)
+            : false;
+    const isOwnUserFilter =
+        viewScope !== 'user' || !filterUserId || filterUserId === currentUser?.id;
+
+    const canEdit =
+        isAdmin ||
+        (isUser && canAccessAllHouses && viewScope === 'all') ||
+        (isUser &&
+            canAccessAllHouses &&
+            viewScope === 'user' &&
+            isOwnUserFilter &&
+            assignedToFilterUser) ||
+        (isUser && !canAccessAllHouses && (isHouseMember || isResponsible));
 
     const handleEditHouse = () => {
         setEditHouseData({ name: house.name, address: house.address || '', location: house.location || '' });
@@ -75,15 +108,19 @@ export default function HouseDetails() {
     };
 
     const handleDeleteHouse = async () => {
-        if (!confirm('Are you sure you want to delete this house and all its rooms?')) return;
+        if (!confirm('Da li ste sigurni da želite da obrišete ovu kuću i sve sobe?')) return;
         setIsDeleting(true);
 
-        for (const room of rooms || []) {
-            await base44.entities.Room.delete(room.id);
+        try {
+            await base44.entities.House.delete(house.id);
+            queryClient.invalidateQueries({ queryKey: ['houses'] });
+            queryClient.invalidateQueries({ queryKey: ['rooms'] });
+            window.location.href = createPageUrl('Home');
+        } catch (error) {
+            alert('Greška pri brisanju: ' + error.message);
+        } finally {
+            setIsDeleting(false);
         }
-        await base44.entities.House.delete(house.id);
-
-        window.location.href = createPageUrl('Home');
     };
 
     const handleAddRoom = async () => {
@@ -124,6 +161,20 @@ export default function HouseDetails() {
         );
     }
 
+    if (houseError || roomsError) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex items-center justify-center p-8">
+                <div className="max-w-md text-center rounded-xl border border-red-200 bg-red-50 p-6">
+                    <h2 className="text-lg font-semibold text-red-800 mb-2">Greška pri učitavanju</h2>
+                    <p className="text-sm text-red-700">{(houseError || roomsError)?.message}</p>
+                    <Link to={createPageUrl('Home')} className="inline-block mt-4">
+                        <Button variant="outline">Nazad na početnu</Button>
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
     if (!house) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex items-center justify-center">
@@ -141,8 +192,8 @@ export default function HouseDetails() {
         );
     }
 
-    const totalOccupants = (rooms || []).reduce((sum, r) => sum + (r.current_occupants || 0), 0);
-    const totalCapacity = (rooms || []).reduce((sum, r) => sum + (r.capacity || 0), 0);
+    const totalOccupants = roomList.reduce((sum, r) => sum + (r.current_occupants || 0), 0);
+    const totalCapacity = roomList.reduce((sum, r) => sum + (r.capacity || 0), 0);
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
@@ -226,7 +277,7 @@ export default function HouseDetails() {
                 <div className="flex items-center justify-between mb-6">
                     <h2 className="text-lg font-semibold text-blue-700 flex items-center gap-2">
                         <DoorOpen className="w-5 h-5 text-blue-600" />
-                        Rooms ({rooms?.length || 0})
+                        Rooms ({roomList.length})
                     </h2>
                     {canEdit && (
                         <Button onClick={() => setIsAddingRoom(true)} className="bg-gradient-to-r from-blue-500 to-blue-600">
@@ -236,9 +287,9 @@ export default function HouseDetails() {
                     )}
                 </div>
 
-                {rooms && rooms.length > 0 ? (
+                {roomList.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {rooms.map((room, index) => (
+                        {roomList.map((room, index) => (
                             <motion.div
                                 key={room.id}
                                 initial={{ opacity: 0, y: 20 }}

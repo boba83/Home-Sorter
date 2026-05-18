@@ -7,18 +7,37 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
+import { createPageUrl, isHouseAssignedToUserId, userDisplayName } from '@/utils';
 import FileUploader from '@/components/FileUploader';
 import ExtractedDataPreview from '@/components/ExtractedDataPreview';
 import HouseCard from '@/components/HouseCard';
 import LocationFolder from '@/components/LocationFolder';
 import { motion, AnimatePresence } from 'framer-motion';
+import ErrorBoundary from '@/lib/ErrorBoundary';
 
 const ALL_LOCATIONS = [
     'Sarti', 'Sykia', 'Klimataria', 'Kalamitsi', 'Porto Koufo',
     'Toroni', 'Zaliv Simonitiko', 'Neos Marmaras', 'Nikiti',
     'Metamorfosi', 'Psakoudia', 'Nea Plaja'
 ];
+
+function getHouseName(house) {
+    return (house?.name ?? 'Bez naziva').toString();
+}
+
+function getOccupantNames(room) {
+    const raw = room?.occupant_names;
+    if (Array.isArray(raw)) return raw.filter((n) => n != null && String(n).trim());
+    if (typeof raw === 'string') {
+        try {
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? parsed : raw.trim() ? [raw] : [];
+        } catch {
+            return raw.trim() ? [raw] : [];
+        }
+    }
+    return [];
+}
 
 export default function Home() {
     const [showUploader, setShowUploader] = useState(false);
@@ -29,61 +48,119 @@ export default function Home() {
     const [selectedHouses, setSelectedHouses] = useState(new Set());
     const [isDeleting, setIsDeleting] = useState(false);
     const [selectedLocation, setSelectedLocation] = useState(null);
+    const [importTargetLocation, setImportTargetLocation] = useState('');
     const queryClient = useQueryClient();
 
-    const { data: houses, isLoading: housesLoading } = useQuery({
+    const effectiveImportLocation = selectedLocation || importTargetLocation || null;
+
+    const { data: houses, isLoading: housesLoading, error: housesError } = useQuery({
         queryKey: ['houses'],
         queryFn: () => base44.entities.House.list('-created_date'),
     });
 
-    const { data: rooms, isLoading: roomsLoading } = useQuery({
+    const { data: rooms, isLoading: roomsLoading, error: roomsError } = useQuery({
         queryKey: ['rooms'],
         queryFn: () => base44.entities.Room.list('-created_date'),
     });
 
-    const handleDataExtracted = (data) => {
-        setExtractedData(data);
+    const { data: currentUser } = useQuery({
+        queryKey: ['currentUser'],
+        queryFn: () => base44.auth.me(),
+    });
+
+    const isAdmin = currentUser?.role === 'admin';
+    const canAccessAllHouses = Boolean(currentUser?.can_access_all_houses);
+    const canFilterByAllUsers = isAdmin || canAccessAllHouses;
+
+    const { data: assignableUsers = [] } = useQuery({
+        queryKey: ['assignableUsers'],
+        queryFn: () => base44.entities.User.assignable(),
+        enabled: canFilterByAllUsers,
+    });
+
+    const filterUser =
+        filterByUser === 'all'
+            ? null
+            : (assignableUsers || []).find((u) => u.id === filterByUser) || null;
+
+    const houseScope =
+        filterByUser === 'all' ? 'all' : `user&userId=${encodeURIComponent(filterByUser)}`;
+
+    const houseList = Array.isArray(houses) ? houses : [];
+    const roomList = Array.isArray(rooms) ? rooms : [];
+
+    const handleDataExtracted = (payload) => {
+        const rawEntries = payload?.entries ?? (Array.isArray(payload) ? payload : []);
+        const entries = Array.isArray(rawEntries) ? rawEntries : [];
+        setExtractedData({
+            entries,
+            location: effectiveImportLocation || payload?.location || null,
+        });
     };
 
     const handleImportComplete = () => {
+        const importedLocation = extractedData?.location || effectiveImportLocation;
         setExtractedData(null);
         setShowUploader(false);
         queryClient.invalidateQueries({ queryKey: ['houses'] });
         queryClient.invalidateQueries({ queryKey: ['rooms'] });
+        if (importedLocation) {
+            setSelectedLocation(importedLocation);
+        }
     };
 
     const getRoomsForHouse = (houseId) => {
-        return (rooms || []).filter(room => room.house_id === houseId);
+        return roomList.filter((room) => room.house_id === houseId);
     };
 
-    const responsiblePersons = [...new Set((houses || []).map(h => h.responsible_person).filter(Boolean))];
+    /** Kuće nakon filtera po korisniku (pretraga i lokacija idu posle). */
+    const userFilteredHouses = houseList.filter((house) => {
+        if (!house?.id) return false;
+        if (filterByUser === 'all') return true;
+        if (!canFilterByAllUsers) return true;
+        return isHouseAssignedToUserId(house, filterByUser, filterUser);
+    });
+
+    const responsiblePersons = [...new Set(userFilteredHouses.map((h) => h.responsible_person).filter(Boolean))];
     
     const getUserColor = (person) => {
         if (!person) return 'slate';
         const colors = ['blue', 'purple', 'green', 'orange', 'pink', 'cyan', 'indigo', 'rose'];
-        const index = responsiblePersons.indexOf(person) % colors.length;
-        return colors[index];
+        const index = responsiblePersons.indexOf(person);
+        if (index < 0) return 'slate';
+        return colors[index % colors.length];
     };
 
-    const filteredHouses = (houses || []).filter(house => {
-        const query = searchQuery.toLowerCase();
-        const houseNameMatch = house.name.toLowerCase().includes(query);
-        
+    const openLocation = (location) => {
+        setSelectedLocation(location);
+        setShowUploader(false);
+        setExtractedData(null);
+        setSelectedHouses(new Set());
+    };
+
+    const filteredHouses = userFilteredHouses.filter((house) => {
+        const query = searchQuery.toLowerCase().trim();
+        const houseNameMatch = getHouseName(house).toLowerCase().includes(query);
+
         const houseRooms = getRoomsForHouse(house.id);
-        const guestNameMatch = houseRooms.some(room => 
-            room.occupant_names?.some(name => name.toLowerCase().includes(query))
+        const guestNameMatch = houseRooms.some((room) =>
+            getOccupantNames(room).some((name) =>
+                String(name).toLowerCase().includes(query)
+            )
         );
-        
-        const userMatch = filterByUser === 'all' || house.responsible_person === filterByUser;
-        const locationMatch = !selectedLocation || house.location === selectedLocation;
-        
-        return (houseNameMatch || guestNameMatch) && userMatch && locationMatch;
+
+        const locationMatch =
+            !selectedLocation ||
+            (house.location || '').trim() === selectedLocation;
+
+        return (houseNameMatch || guestNameMatch) && locationMatch;
     });
 
-    // Stats per location
     const getLocationStats = (location) => {
-        const locationHouses = (houses || []).filter(h => h.location === location);
-        const locationRooms = locationHouses.flatMap(h => getRoomsForHouse(h.id));
+        const locationHouses = userFilteredHouses.filter(
+            (h) => (h.location || '').trim() === location
+        );
+        const locationRooms = locationHouses.flatMap((h) => getRoomsForHouse(h.id));
         return {
             houses: locationHouses.length,
             rooms: locationRooms.length,
@@ -91,12 +168,12 @@ export default function Home() {
         };
     };
 
-    // Locations that actually have houses
-    const activeLocations = ALL_LOCATIONS.filter(loc => 
-        (houses || []).some(h => h.location === loc)
+    const activeLocations = ALL_LOCATIONS.filter((loc) =>
+        userFilteredHouses.some((h) => (h.location || '').trim() === loc)
     );
 
     const isLoading = housesLoading || roomsLoading;
+    const loadError = housesError || roomsError;
 
     const toggleSelectAll = () => {
         if (selectedHouses.size === filteredHouses.length) {
@@ -117,7 +194,9 @@ export default function Home() {
     };
 
     const handleExportXML = (location) => {
-        const locationHouses = (houses || []).filter(h => h.location === location);
+        const locationHouses = userFilteredHouses.filter(
+            (h) => (h.location || '').trim() === location
+        );
         
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
         xml += `<export lokacija="${location}" datum="${new Date().toISOString().slice(0, 10)}">\n`;
@@ -167,29 +246,30 @@ export default function Home() {
         setIsDeleting(true);
 
         try {
-            const deletePromises = [];
             for (const houseId of selectedHouses) {
-                const houseRooms = getRoomsForHouse(houseId);
-                for (const room of houseRooms) {
-                    deletePromises.push(base44.entities.Room.delete(room.id));
-                }
-                deletePromises.push(base44.entities.House.delete(houseId));
+                await base44.entities.House.delete(houseId);
             }
-
-            await Promise.all(deletePromises);
             setSelectedHouses(new Set());
-            queryClient.invalidateQueries({ queryKey: ['houses'] });
-            queryClient.invalidateQueries({ queryKey: ['rooms'] });
+            await queryClient.invalidateQueries({ queryKey: ['houses'] });
+            await queryClient.invalidateQueries({ queryKey: ['rooms'] });
         } catch (error) {
-            alert('Error deleting: ' + error.message);
+            alert('Greška pri brisanju: ' + error.message);
         } finally {
             setIsDeleting(false);
         }
     };
 
     return (
+        <ErrorBoundary>
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {loadError && (
+                    <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                        <p className="font-medium">Greška pri učitavanju podataka</p>
+                        <p className="mt-1">{loadError.message}</p>
+                        <p className="mt-2 text-red-700">Restartujte API, pa uradite Ctrl+F5.</p>
+                    </div>
+                )}
                 {/* Header */}
                 <div className="mb-8">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
@@ -212,12 +292,14 @@ export default function Home() {
                             </div>
                         </div>
                         <div className="flex gap-2">
-                            <Link to={createPageUrl('UserManagement')}>
-                                <Button variant="outline">
-                                    <Users className="w-4 h-4 mr-2" />
-                                    User Management
-                                </Button>
-                            </Link>
+                            {isAdmin && (
+                                <Link to={createPageUrl('UserManagement')}>
+                                    <Button variant="outline">
+                                        <Users className="w-4 h-4 mr-2" />
+                                        Korisnici
+                                    </Button>
+                                </Link>
+                            )}
                             <Button 
                                 onClick={() => setShowUploader(!showUploader)}
                                 className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 shadow-lg shadow-blue-500/25"
@@ -239,17 +321,21 @@ export default function Home() {
                                 className="pl-10 bg-white border-slate-200"
                             />
                         </div>
-                        <Select value={filterByUser} onValueChange={setFilterByUser}>
-                            <SelectTrigger className="w-48 bg-white">
-                                <SelectValue placeholder="Filter by user" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Users</SelectItem>
-                                {responsiblePersons.map(person => (
-                                    <SelectItem key={person} value={person}>{person}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        {canFilterByAllUsers && (
+                            <Select value={filterByUser} onValueChange={setFilterByUser}>
+                                <SelectTrigger className="w-52 bg-white">
+                                    <SelectValue placeholder="Filter po korisniku" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Svi korisnici</SelectItem>
+                                    {(assignableUsers || []).map((user) => (
+                                        <SelectItem key={user.id} value={user.id}>
+                                            {userDisplayName(user)}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
                         <div className="flex gap-1 bg-white border border-slate-200 rounded-lg p-1">
                             <Button
                                 variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
@@ -268,7 +354,7 @@ export default function Home() {
                         </div>
                     </div>
                     
-                    {filteredHouses.length > 0 && (
+                    {(selectedLocation || searchQuery) && filteredHouses.length > 0 && (
                         <div className="flex items-center gap-2 mt-4 bg-white border border-slate-200 rounded-lg p-3">
                             <Button
                                 variant="outline"
@@ -313,11 +399,40 @@ export default function Home() {
                             exit={{ opacity: 0, height: 0 }}
                             className="mb-8"
                         >
-                            <FileUploader onDataExtracted={handleDataExtracted} />
+                            {(selectedLocation || importTargetLocation) && (
+                                <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 mb-4">
+                                    Import ide u lokaciju:{' '}
+                                    <strong>{selectedLocation || importTargetLocation}</strong>
+                                </p>
+                            )}
+                            {!selectedLocation && (
+                                <div className="mb-4 flex flex-col sm:flex-row sm:items-center gap-2">
+                                    <span className="text-sm text-slate-600 shrink-0">Lokacija za import:</span>
+                                    <Select
+                                        value={importTargetLocation || '_none'}
+                                        onValueChange={(v) => setImportTargetLocation(v === '_none' ? '' : v)}
+                                    >
+                                        <SelectTrigger className="bg-white max-w-xs">
+                                            <SelectValue placeholder="Izaberi lokaciju (npr. Toroni)..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="_none">— automatski iz PDF-a —</SelectItem>
+                                            {ALL_LOCATIONS.map((loc) => (
+                                                <SelectItem key={loc} value={loc}>{loc}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            )}
+                            <FileUploader
+                                onDataExtracted={handleDataExtracted}
+                                defaultLocation={effectiveImportLocation}
+                            />
                             
                             {extractedData && (
                                 <ExtractedDataPreview
                                     data={extractedData}
+                                    importLocation={effectiveImportLocation || extractedData.location}
                                     onImportComplete={handleImportComplete}
                                     onCancel={() => setExtractedData(null)}
                                 />
@@ -327,11 +442,11 @@ export default function Home() {
                 </AnimatePresence>
 
                 {/* Location Folders */}
-                {!isLoading && !searchQuery && !selectedLocation && houses && houses.length > 0 && (
+                {!isLoading && !searchQuery && !selectedLocation && userFilteredHouses.length > 0 && (
                     <div className="mb-8">
                         <h2 className="text-lg font-semibold text-slate-700 mb-4">Lokacije</h2>
                         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            {ALL_LOCATIONS.map(location => {
+                            {activeLocations.map((location) => {
                                 const stats = getLocationStats(location);
                                 return (
                                     <LocationFolder
@@ -340,7 +455,7 @@ export default function Home() {
                                         houses={stats.houses}
                                         totalRooms={stats.rooms}
                                         totalOccupants={stats.occupants}
-                                        onClick={stats.houses > 0 ? () => setSelectedLocation(location) : undefined}
+                                        onClick={() => openLocation(location)}
                                         isSelected={false}
                                     />
                                 );
@@ -419,6 +534,7 @@ export default function Home() {
                                     house={house}
                                     rooms={getRoomsForHouse(house.id)}
                                     userColor={getUserColor(house.responsible_person)}
+                                    detailsScope={houseScope}
                                 />
                             </div>
                         ))}
@@ -449,26 +565,26 @@ export default function Home() {
                 )}
 
                 {/* Stats Footer */}
-                {houses && houses.length > 0 && (
+                {houseList.length > 0 && (
                     <div className="mt-12 pt-8 border-t border-slate-200">
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-                                <div className="text-3xl font-bold text-slate-800">{houses.length}</div>
+                                <div className="text-3xl font-bold text-slate-800">{houseList.length}</div>
                                 <div className="text-sm text-slate-500">Total Houses</div>
                             </div>
                             <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-                                <div className="text-3xl font-bold text-slate-800">{rooms?.length || 0}</div>
+                                <div className="text-3xl font-bold text-slate-800">{roomList.length}</div>
                                 <div className="text-sm text-slate-500">Total Rooms</div>
                             </div>
                             <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
                                 <div className="text-3xl font-bold text-green-600">
-                                    {rooms?.filter(r => r.current_occupants > 0).length || 0}
+                                    {roomList.filter((r) => r.current_occupants > 0).length}
                                 </div>
                                 <div className="text-sm text-slate-500">Occupied Rooms</div>
                             </div>
                             <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
                                 <div className="text-3xl font-bold text-blue-600">
-                                    {rooms?.reduce((sum, r) => sum + (r.current_occupants || 0), 0) || 0}
+                                    {roomList.reduce((sum, r) => sum + (r.current_occupants || 0), 0)}
                                 </div>
                                 <div className="text-sm text-slate-500">Total Occupants</div>
                             </div>
@@ -477,5 +593,6 @@ export default function Home() {
                 )}
             </div>
         </div>
+        </ErrorBoundary>
     );
 }

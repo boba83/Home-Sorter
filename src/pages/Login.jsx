@@ -13,10 +13,24 @@ export default function Login() {
   const [password, setPassword] = useState('admin123');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [apiOnline, setApiOnline] = useState(null);
 
   React.useEffect(() => {
     if (isAuthenticated) navigate('/', { replace: true });
   }, [isAuthenticated, navigate]);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), 5000);
+    fetch('/api/health', { signal: controller.signal, cache: 'no-store' })
+      .then((r) => setApiOnline(r.ok))
+      .catch(() => setApiOnline(false))
+      .finally(() => clearTimeout(t));
+    return () => {
+      clearTimeout(t);
+      controller.abort();
+    };
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -24,11 +38,11 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/', { replace: true });
+      window.location.assign('/');
     } catch (err) {
       setError(err.message || 'Prijava nije uspela');
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -43,6 +57,17 @@ export default function Login() {
             <p className="text-sm text-slate-500">Vaša lokalna aplikacija — bez Base44</p>
           </div>
         </div>
+
+        {apiOnline === false && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-medium">API server nije pokrenut</p>
+            <p className="mt-1 text-amber-800">
+              U terminalu u korenu projekta pokrenite:{' '}
+              <code className="rounded bg-amber-100 px-1">npm run dev:all:clean</code>
+              , sačekajte poruku na portu 3001, zatim osvežite stranicu.
+            </p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">

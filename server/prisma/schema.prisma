@@ -8,14 +8,56 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
+  id            String         @id @default(cuid())
+  email         String         @unique
   passwordHash  String
   fullName      String
-  role          String   @default("user")
-  profileImage  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  firstName     String?
+  lastName      String?
+  role                 String         @default("user")
+  canAccessAllHouses   Boolean        @default(false)
+  profileImage         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  notifications Notification[]
+  invitesSent   Invite[]       @relation("InvitesSent")
+  houseMembers  HouseMember[]
+}
+
+model Invite {
+  id         String    @id @default(cuid())
+  email      String
+  role       String    @default("user")
+  token      String    @unique
+  invitedBy  String
+  inviter    User      @relation("InvitesSent", fields: [invitedBy], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model HouseMember {
+  id        String   @id @default(cuid())
+  houseId   String
+  house     House    @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([houseId, userId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  severity  String   @default("normal")
+  taskId    String?
+  title     String
+  message   String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
 }
 
 model House {
@@ -29,6 +71,7 @@ model House {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   rooms             Room[]
+  members           HouseMember[]
 }
 
 model Room {
@@ -49,6 +92,7 @@ model Room {
   visitUpdatedAt     DateTime?
   stayFrom           String?
   stayTo             String?
+  contactPhone       String?
   bus                Boolean   @default(false)
   taxPaid            Boolean   @default(false)
   createdAt          DateTime  @default(now())
@@ -82,4 +126,29 @@ model Task {
   comments       String   @default("[]")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model InfoFolder {
+  id        String       @id @default(cuid())
+  name      String
+  color     String?
+  parentId  String?
+  parent    InfoFolder?  @relation("InfoFolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  InfoFolder[] @relation("InfoFolderTree")
+  files     InfoFile[]
+  createdBy String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model InfoFile {
+  id         String     @id @default(cuid())
+  folderId   String
+  folder     InfoFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  name       String
+  storedPath String
+  mimeType   String?
+  sizeBytes  Int        @default(0)
+  uploadedBy String?
+  createdAt  DateTime   @default(now())
 }
