@@ -24,7 +24,11 @@ import {
   serializeInvite,
   displayFullName,
 } from './lib/serialize.js';
-import { looksLikeAstraRoomingList, parseAstraRoomingListLines } from './lib/astraRoomingParser.js';
+import {
+  looksLikeAstraRoomingList,
+  parseAstraRoomingListLines,
+  scanHotelNamesInText,
+} from './lib/astraRoomingParser.js';
 import { notifyOnTaskCreated, notifyOnTaskUpdated } from './lib/taskNotifications.js';
 import { sendInviteEmail, isMailConfigured } from './lib/mail.js';
 import { generateTemporaryPassword, validatePasswordStrength } from './lib/password.js';
@@ -242,8 +246,17 @@ app.get('/api/houses', authMiddleware, async (req, res) => {
   res.json(houses.map(serializeHouse));
 });
 
-app.post('/api/houses', authMiddleware, adminOnly, async (req, res) => {
-  const house = await prisma.house.create({ data: houseFromBody(req.body) });
+app.post('/api/houses', authMiddleware, editorOnly, async (req, res) => {
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ message: 'Unesite naziv kuće' });
+  const house = await prisma.house.create({
+    data: houseFromBody({
+      ...req.body,
+      name,
+      total_rooms: 0,
+      total_capacity: 0,
+    }),
+  });
   const full = await prisma.house.findUnique({
     where: { id: house.id },
     include: houseIncludeMembers,
@@ -349,10 +362,22 @@ app.get('/api/rooms', authMiddleware, async (req, res) => {
   res.json(rooms.map(serializeRoom));
 });
 
+async function refreshHouseTotals(houseId) {
+  const rooms = await prisma.room.findMany({ where: { houseId } });
+  await prisma.house.update({
+    where: { id: houseId },
+    data: {
+      totalRooms: rooms.length,
+      totalCapacity: rooms.reduce((s, r) => s + (r.capacity || 0), 0),
+    },
+  });
+}
+
 app.post('/api/rooms', authMiddleware, async (req, res) => {
   const houseId = req.body.house_id;
   if (!houseId || !(await roomEditGuard(req, res, houseId))) return;
   const room = await prisma.room.create({ data: roomFromBody(req.body) });
+  await refreshHouseTotals(houseId);
   res.status(201).json(serializeRoom(room));
 });
 
@@ -376,12 +401,13 @@ app.put('/api/rooms/:id', authMiddleware, async (req, res) => {
   res.json(serializeRoom(room));
 });
 
-app.delete('/api/rooms/:id', authMiddleware, async (req, res) => {
+app.delete('/api/rooms/:id', authMiddleware, adminOnly, async (req, res) => {
   try {
     const existing = await prisma.room.findUnique({ where: { id: req.params.id } });
     if (!existing) return res.status(404).json({ message: 'Soba nije pronađena' });
-    if (!(await roomEditGuard(req, res, existing.houseId))) return;
+    const houseId = existing.houseId;
     await prisma.room.delete({ where: { id: req.params.id } });
+    await refreshHouseTotals(houseId);
     res.status(204).end();
   } catch (e) {
     if (e.code === 'P2025') {
@@ -710,8 +736,11 @@ app.post('/api/import/pdf', authMiddleware, upload.single('file'), async (req, r
   try {
     const parsed = await pdfParse(req.file.buffer);
     const text = parsed.text || '';
-    const { entries, location } = parsePdfTextToEntries(text);
-    res.json({ status: 'success', output: { entries, location } });
+    const { entries, location, hotels, hotelsMissingRooms } = parsePdfTextToEntries(text);
+    res.json({
+      status: 'success',
+      output: { entries, location, hotels, hotelsMissingRooms },
+    });
   } catch (e) {
     console.error(e);
     res.status(500).json({
@@ -743,26 +772,34 @@ app.post('/api/import/commit', authMiddleware, adminOnly, async (req, res) => {
     return res.status(400).json({ message: 'Nema redova za import' });
   }
   try {
+    const houseNamesForImport = [
+      ...new Set(
+        entries.map((e) => (e.house_name || 'Unknown House').trim() || 'Unknown House'),
+      ),
+    ];
     const summary = await prisma.$transaction(async (tx) => {
       const houseIdByName = new Map();
       const grouped = new Map();
+      const houseKey = (name) =>
+        (name || 'Unknown House').replace(/\s+/g, ' ').trim().toLowerCase() || 'unknown house';
+
       for (const e of entries) {
         const hn = (e.house_name || 'Unknown House').trim() || 'Unknown House';
-        if (!grouped.has(hn)) grouped.set(hn, []);
-        grouped.get(hn).push(e);
+        const key = houseKey(hn);
+        if (!grouped.has(key)) grouped.set(key, { displayName: hn, rooms: [] });
+        grouped.get(key).rooms.push(e);
       }
 
-      for (const [houseName, roomGroup] of grouped) {
+      for (const [, { displayName: houseName, rooms: roomGroup }] of grouped) {
         const totalCapacity = roomGroup.reduce(
           (sum, r) => sum + (Number(r.number_of_persons) || 0),
           0
         );
-        const where = location ? { name: houseName, location } : { name: houseName };
-        let house = await tx.house.findFirst({ where });
+        let house = await findHouseForImport(tx, houseName, location);
         if (!house) {
           house = await tx.house.create({
             data: houseFromBody({
-              name: houseName,
+              name: houseName.replace(/\s+/g, ' ').trim(),
               location: location || roomGroup[0]?.location || null,
               total_rooms: roomGroup.length,
               total_capacity: totalCapacity,
@@ -777,13 +814,13 @@ app.post('/api/import/commit', authMiddleware, adminOnly, async (req, res) => {
             },
           });
         }
-        houseIdByName.set(houseName, house.id);
+        houseIdByName.set(houseKey(houseName), house.id);
       }
 
       let roomsCreated = 0;
       for (const entry of entries) {
         const houseName = (entry.house_name || 'Unknown House').trim() || 'Unknown House';
-        const houseId = houseIdByName.get(houseName);
+        const houseId = houseIdByName.get(houseKey(houseName));
         if (!houseId) {
           throw new Error(`Nedostaje kuća za: ${houseName}`);
         }
@@ -821,6 +858,7 @@ app.post('/api/import/commit', authMiddleware, adminOnly, async (req, res) => {
       ok: true,
       roomsCreated: summary.roomsCreated,
       houseGroups: summary.houseGroups,
+      houses: houseNamesForImport,
     });
   } catch (e) {
     console.error(e);
@@ -867,7 +905,23 @@ function parsePdfTextToEntries(text) {
   const location = detectLocationFromText(text);
 
   if (looksLikeAstraRoomingList(text)) {
-    return { entries: parseAstraRoomingListLines(lines, location), location };
+    const parsed = parseAstraRoomingListLines(lines, location);
+    const scanned = scanHotelNamesInText(text);
+    const hotelSet = new Set([...parsed.hotels, ...scanned]);
+    const roomCount = new Map();
+    for (const e of parsed.entries) {
+      roomCount.set(e.house_name, (roomCount.get(e.house_name) || 0) + 1);
+    }
+    const hotels = [...hotelSet].filter(
+      (h) => h && !/TOTAL|\/ADT\b|ROOMS\s*:/i.test(h),
+    );
+    const hotelsMissingRooms = hotels.filter((h) => !roomCount.get(h));
+    return {
+      entries: parsed.entries,
+      location,
+      hotels,
+      hotelsMissingRooms,
+    };
   }
 
   const entries = [];
@@ -945,7 +999,24 @@ function parsePdfTextToEntries(text) {
     });
   }
 
-  return { entries, location };
+  const hotels = [...new Set(entries.map((e) => e.house_name).filter(Boolean))];
+  return { entries, location, hotels, hotelsMissingRooms: [] };
+}
+
+async function findHouseForImport(tx, houseName, location) {
+  const normalized = houseName.replace(/\s+/g, ' ').trim();
+  const candidates = await tx.house.findMany({
+    where: location ? { location } : {},
+    select: { id: true, name: true, totalRooms: true, totalCapacity: true, location: true },
+  });
+  const exact = candidates.find(
+    (h) => h.name.replace(/\s+/g, ' ').trim().toLowerCase() === normalized.toLowerCase(),
+  );
+  if (exact) return exact;
+  if (!location) {
+    return tx.house.findFirst({ where: { name: normalized } });
+  }
+  return null;
 }
 
 // ——— Bitne informacije (fascikle i fajlovi) ———

@@ -21,16 +21,32 @@ export default function ExtractedDataPreview({ data, importLocation, onImportCom
         acc[houseName].push(entry);
         return acc;
     }, {});
+    const missingRooms = Array.isArray(data?.hotelsMissingRooms) ? data.hotelsMissingRooms : [];
+    const isRealHotel = (name) =>
+        name && !/TOTAL|\/ADT\b|ROOMS\s*:/i.test(name) && !/^\d+\s*\/\s*ADT/i.test(name);
+
+    const allHotelNames = [
+        ...new Set([
+            ...Object.keys(groupedByHouse),
+            ...(Array.isArray(data?.hotels) ? data.hotels : []),
+        ].filter(isRealHotel)),
+    ].sort((a, b) => a.localeCompare(b, 'sr'));
+
+    const missingRoomsFiltered = missingRooms.filter(isRealHotel);
 
     const handleImport = async () => {
         setIsImporting(true);
 
         try {
-            await base44.integrations.Core.CommitPdfImport({
+            const result = await base44.integrations.Core.CommitPdfImport({
                 location: resolvedLocation,
                 entries,
             });
             setIsImporting(false);
+            const saved = result?.houses?.length ? result.houses.join(', ') : allHotelNames.join(', ');
+            if (saved) {
+                alert(`Import završen.\nKuće: ${saved}\nSobe: ${result?.roomsCreated ?? entries.length}`);
+            }
             onImportComplete();
         } catch (error) {
             setIsImporting(false);
@@ -64,6 +80,36 @@ export default function ExtractedDataPreview({ data, importLocation, onImportCom
                 </div>
             </CardHeader>
             <CardContent className="p-0">
+                <div className="px-4 py-3 border-b bg-slate-50 space-y-2">
+                    <p className="text-sm text-slate-600">
+                        Proverite da su <strong>sve kuće</strong> u listi i da imaju sobe (broj u zagradi).
+                        Crveno = kuća je u PDF-u ali <strong>nijedna soba nije prepoznata</strong> — ne importujte dok ne popravite PDF ili parser.
+                    </p>
+                    {missingRoomsFiltered.length > 0 && (
+                        <p className="text-sm font-medium text-red-700">
+                            Nedostaju sobe za: {missingRoomsFiltered.join(', ')}
+                        </p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                        {allHotelNames.map((name) => {
+                            const rooms = groupedByHouse[name]?.length ?? 0;
+                            const warn = missingRoomsFiltered.includes(name) || rooms === 0;
+                            return (
+                            <Badge
+                                key={name}
+                                variant="outline"
+                                className={
+                                    warn
+                                        ? 'bg-red-50 text-red-800 border-red-300'
+                                        : 'bg-white text-slate-800'
+                                }
+                            >
+                                {name} ({rooms}{warn ? ' — nema soba!' : ''})
+                            </Badge>
+                            );
+                        })}
+                    </div>
+                </div>
                 <div className="max-h-96 overflow-auto">
                     <Table>
                         <TableHeader className="sticky top-0 bg-white">
@@ -144,7 +190,15 @@ export default function ExtractedDataPreview({ data, importLocation, onImportCom
                         <X className="w-4 h-4 mr-2" />
                         Cancel
                     </Button>
-                    <Button onClick={handleImport} disabled={isImporting}>
+                    <Button
+                        onClick={handleImport}
+                        disabled={isImporting || missingRoomsFiltered.length > 0}
+                        title={
+                            missingRoomsFiltered.length > 0
+                                ? 'Prvo rešite kuće bez prepoznatih soba'
+                                : undefined
+                        }
+                    >
                         {isImporting ? (
                             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         ) : (

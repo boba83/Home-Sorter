@@ -81,6 +81,8 @@ export default function FileUploader({ onDataExtracted, defaultLocation = null }
             onDataExtracted({
                 entries,
                 location: defaultLocation || output.location || null,
+                hotels: output.hotels ?? [],
+                hotelsMissingRooms: output.hotelsMissingRooms ?? [],
             });
         } else {
             setStatus('error');

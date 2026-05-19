@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
-import { Building2, Upload, Search, LayoutGrid, List, Users, Trash2, CheckSquare, Square, ArrowLeft, FileDown } from 'lucide-react';
+import { Building2, Upload, Search, LayoutGrid, List, Users, Trash2, CheckSquare, Square, ArrowLeft, FileDown, Plus, Loader2 } from 'lucide-react';
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from 'react-router-dom';
 import { createPageUrl, isHouseAssignedToUserId, userDisplayName } from '@/utils';
@@ -49,6 +51,9 @@ export default function Home() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [selectedLocation, setSelectedLocation] = useState(null);
     const [importTargetLocation, setImportTargetLocation] = useState('');
+    const [isAddingHouse, setIsAddingHouse] = useState(false);
+    const [isSavingHouse, setIsSavingHouse] = useState(false);
+    const [newHouseData, setNewHouseData] = useState({ name: '', address: '', location: '' });
     const queryClient = useQueryClient();
 
     const effectiveImportLocation = selectedLocation || importTargetLocation || null;
@@ -69,6 +74,8 @@ export default function Home() {
     });
 
     const isAdmin = currentUser?.role === 'admin';
+    const isViewer = currentUser?.role === 'viewer';
+    const canManageHouses = !isViewer;
     const canAccessAllHouses = Boolean(currentUser?.can_access_all_houses);
     const canFilterByAllUsers = isAdmin || canAccessAllHouses;
 
@@ -95,6 +102,8 @@ export default function Home() {
         setExtractedData({
             entries,
             location: effectiveImportLocation || payload?.location || null,
+            hotels: payload?.hotels ?? [],
+            hotelsMissingRooms: payload?.hotelsMissingRooms ?? [],
         });
     };
 
@@ -111,6 +120,46 @@ export default function Home() {
 
     const getRoomsForHouse = (houseId) => {
         return roomList.filter((room) => room.house_id === houseId);
+    };
+
+    const openAddHouseDialog = () => {
+        const loc =
+            selectedLocation && selectedLocation !== '__unlocated__'
+                ? selectedLocation
+                : '';
+        setNewHouseData({ name: '', address: '', location: loc });
+        setIsAddingHouse(true);
+    };
+
+    const handleAddHouse = async () => {
+        const name = newHouseData.name.trim();
+        if (!name) return;
+        const location =
+            selectedLocation && selectedLocation !== '__unlocated__'
+                ? selectedLocation
+                : newHouseData.location.trim() || null;
+        if (!location) {
+            alert('Izaberite lokaciju za kuću.');
+            return;
+        }
+        setIsSavingHouse(true);
+        try {
+            await base44.entities.House.create({
+                name,
+                address: newHouseData.address.trim() || undefined,
+                location,
+                total_rooms: 0,
+                total_capacity: 0,
+            });
+            queryClient.invalidateQueries({ queryKey: ['houses'] });
+            setIsAddingHouse(false);
+            setNewHouseData({ name: '', address: '', location: '' });
+            if (!selectedLocation) setSelectedLocation(location);
+        } catch (e) {
+            alert(e.message || 'Kuća nije dodata');
+        } finally {
+            setIsSavingHouse(false);
+        }
     };
 
     /** Kuće nakon filtera po korisniku (pretraga i lokacija idu posle). */
@@ -149,9 +198,12 @@ export default function Home() {
             )
         );
 
+        const loc = (house.location || '').trim();
         const locationMatch =
             !selectedLocation ||
-            (house.location || '').trim() === selectedLocation;
+            (selectedLocation === '__unlocated__'
+                ? !loc || !ALL_LOCATIONS.includes(loc)
+                : loc === selectedLocation);
 
         return (houseNameMatch || guestNameMatch) && locationMatch;
     });
@@ -171,6 +223,11 @@ export default function Home() {
     const activeLocations = ALL_LOCATIONS.filter((loc) =>
         userFilteredHouses.some((h) => (h.location || '').trim() === loc)
     );
+
+    const housesWithoutLocation = userFilteredHouses.filter((h) => {
+        const loc = (h.location || '').trim();
+        return !loc || !ALL_LOCATIONS.includes(loc);
+    });
 
     const isLoading = housesLoading || roomsLoading;
     const loadError = housesError || roomsError;
@@ -354,7 +411,7 @@ export default function Home() {
                         </div>
                     </div>
                     
-                    {(selectedLocation || searchQuery) && filteredHouses.length > 0 && (
+                    {isAdmin && (selectedLocation || searchQuery) && filteredHouses.length > 0 && (
                         <div className="flex items-center gap-2 mt-4 bg-white border border-slate-200 rounded-lg p-3">
                             <Button
                                 variant="outline"
@@ -367,12 +424,12 @@ export default function Home() {
                                 ) : (
                                     <Square className="w-4 h-4" />
                                 )}
-                                Select All ({filteredHouses.length})
+                                Izaberi sve ({filteredHouses.length})
                             </Button>
                             {selectedHouses.size > 0 && (
                                 <>
                                     <span className="text-sm text-slate-500">
-                                        {selectedHouses.size} selected
+                                        {selectedHouses.size} izabrano
                                     </span>
                                     <Button
                                         variant="destructive"
@@ -460,6 +517,31 @@ export default function Home() {
                                     />
                                 );
                             })}
+                            {housesWithoutLocation.length > 0 && (
+                                <LocationFolder
+                                    key="__unlocated__"
+                                    location="Bez lokacije"
+                                    houses={housesWithoutLocation.length}
+                                    totalRooms={housesWithoutLocation.reduce(
+                                        (n, h) => n + getRoomsForHouse(h.id).length,
+                                        0,
+                                    )}
+                                    totalOccupants={housesWithoutLocation.reduce(
+                                        (n, h) =>
+                                            n +
+                                            getRoomsForHouse(h.id).reduce(
+                                                (s, r) => s + (r.current_occupants || 0),
+                                                0,
+                                            ),
+                                        0,
+                                    )}
+                                    onClick={() => {
+                                        setSelectedLocation('__unlocated__');
+                                        setSelectedHouses(new Set());
+                                    }}
+                                    isSelected={false}
+                                />
+                            )}
                         </div>
                     </div>
                 )}
@@ -479,17 +561,31 @@ export default function Home() {
                             <ArrowLeft className="w-4 h-4" />
                             Nazad
                         </Button>
-                        <h2 className="text-xl font-bold text-slate-800">{selectedLocation}</h2>
+                        <h2 className="text-xl font-bold text-slate-800">
+                            {selectedLocation === '__unlocated__' ? 'Bez lokacije' : selectedLocation}
+                        </h2>
                         <span className="text-slate-500 text-sm">— {filteredHouses.length} {filteredHouses.length === 1 ? 'kuća' : 'kuće/kuća'}</span>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleExportXML(selectedLocation)}
-                            className="ml-auto gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                        >
-                            <FileDown className="w-4 h-4" />
-                            Izvezi XML (smena)
-                        </Button>
+                        <motion.div className="ml-auto flex flex-wrap gap-2">
+                            {canManageHouses && (
+                                <Button
+                                    size="sm"
+                                    onClick={openAddHouseDialog}
+                                    className="gap-2 bg-gradient-to-r from-blue-500 to-blue-600"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Dodaj kuću
+                                </Button>
+                            )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleExportXML(selectedLocation)}
+                                className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                            >
+                                <FileDown className="w-4 h-4" />
+                                Izvezi XML (smena)
+                            </Button>
+                        </motion.div>
                     </div>
                 )}
 
@@ -516,7 +612,8 @@ export default function Home() {
                     <div className={`grid gap-6 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
                         {filteredHouses.map(house => (
                             <div key={house.id} className="relative">
-                                <div 
+                                {isAdmin && (
+                                <div
                                     className="absolute top-3 left-3 z-10 cursor-pointer"
                                     onClick={(e) => {
                                         e.preventDefault();
@@ -530,6 +627,7 @@ export default function Home() {
                                         <Square className="w-6 h-6 text-slate-400 bg-white rounded shadow-md hover:text-blue-600" />
                                     )}
                                 </div>
+                                )}
                                 <HouseCard
                                     house={house}
                                     rooms={getRoomsForHouse(house.id)}
@@ -545,21 +643,32 @@ export default function Home() {
                             <Building2 className="w-10 h-10 text-slate-300" />
                         </div>
                         <h3 className="text-xl font-semibold text-slate-800 mb-2">
-                            {searchQuery ? 'No houses found' : 'No houses yet'}
+                            {searchQuery ? 'Nema rezultata' : 'Nema kuća na ovoj lokaciji'}
                         </h3>
                         <p className="text-slate-500 mb-6 max-w-sm mx-auto">
-                            {searchQuery 
-                                ? 'Try a different search term'
-                                : 'Upload a PDF file to import house and room data automatically'}
+                            {searchQuery
+                                ? 'Probajte drugi pojam za pretragu'
+                                : 'Uvezite rooming listu (PDF) ili dodajte kuću ručno ako nije u listi'}
                         </p>
-                        {!searchQuery && (
-                            <Button 
-                                onClick={() => setShowUploader(true)}
-                                className="bg-gradient-to-r from-blue-500 to-blue-600"
-                            >
-                                <Upload className="w-4 h-4 mr-2" />
-                                Import from PDF
-                            </Button>
+                        {!searchQuery && selectedLocation && (
+                            <div className="flex flex-wrap justify-center gap-3">
+                                {canManageHouses && (
+                                    <Button
+                                        onClick={openAddHouseDialog}
+                                        className="bg-gradient-to-r from-blue-500 to-blue-600"
+                                    >
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        Dodaj kuću
+                                    </Button>
+                                )}
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setShowUploader(true)}
+                                >
+                                    <Upload className="w-4 h-4 mr-2" />
+                                    Uvezi PDF
+                                </Button>
+                            </div>
                         )}
                     </div>
                 )}
@@ -592,6 +701,70 @@ export default function Home() {
                     </div>
                 )}
             </div>
+
+            <Dialog open={isAddingHouse} onOpenChange={setIsAddingHouse}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Dodaj kuću</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="newHouseName">Naziv kuće</Label>
+                            <Input
+                                id="newHouseName"
+                                value={newHouseData.name}
+                                onChange={(e) => setNewHouseData({ ...newHouseData, name: e.target.value })}
+                                placeholder="npr. Flora, Duvas"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="newHouseAddress">Adresa (opciono)</Label>
+                            <Input
+                                id="newHouseAddress"
+                                value={newHouseData.address}
+                                onChange={(e) => setNewHouseData({ ...newHouseData, address: e.target.value })}
+                            />
+                        </div>
+                        {(!selectedLocation || selectedLocation === '__unlocated__') && (
+                            <div className="space-y-2">
+                                <Label>Lokacija</Label>
+                                <Select
+                                    value={newHouseData.location}
+                                    onValueChange={(val) => setNewHouseData({ ...newHouseData, location: val })}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Izaberite lokaciju..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {ALL_LOCATIONS.map((loc) => (
+                                            <SelectItem key={loc} value={loc}>
+                                                {loc}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                        {selectedLocation && selectedLocation !== '__unlocated__' && (
+                            <p className="text-sm text-slate-500">
+                                Lokacija: <span className="font-medium text-slate-700">{selectedLocation}</span>
+                            </p>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddingHouse(false)}>
+                            Otkaži
+                        </Button>
+                        <Button
+                            onClick={handleAddHouse}
+                            disabled={isSavingHouse || !newHouseData.name.trim()}
+                        >
+                            {isSavingHouse && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Sačuvaj
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
         </ErrorBoundary>
     );

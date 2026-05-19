@@ -93,6 +93,7 @@ export default function HouseDetails() {
             isOwnUserFilter &&
             assignedToFilterUser) ||
         (isUser && !canAccessAllHouses && (isHouseMember || isResponsible));
+    const canDelete = isAdmin;
 
     const handleEditHouse = () => {
         setEditHouseData({ name: house.name, address: house.address || '', location: house.location || '' });
@@ -237,12 +238,14 @@ export default function HouseDetails() {
                                     <div className="flex flex-wrap gap-2">
                                         <Button variant="outline" onClick={handleEditHouse}>
                                             <Edit2 className="w-4 h-4 mr-2" />
-                                            Edit House
+                                            Izmeni kuću
                                         </Button>
-                                        <Button variant="outline" onClick={handleDeleteHouse} disabled={isDeleting} className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                                            {isDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                                            Delete
-                                        </Button>
+                                        {canDelete && (
+                                            <Button variant="outline" onClick={handleDeleteHouse} disabled={isDeleting} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                                                {isDeleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+                                                Obriši
+                                            </Button>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="flex items-center gap-2 text-slate-500 bg-slate-100 px-3 py-2 rounded-lg">
@@ -282,7 +285,7 @@ export default function HouseDetails() {
                     {canEdit && (
                         <Button onClick={() => setIsAddingRoom(true)} className="bg-gradient-to-r from-blue-500 to-blue-600">
                             <Plus className="w-4 h-4 mr-2" />
-                            Add Room
+                            Dodaj sobu
                         </Button>
                     )}
                 </div>
@@ -301,6 +304,7 @@ export default function HouseDetails() {
                                     onUpdate={handleRoomUpdate}
                                     onDelete={handleRoomUpdate}
                                     canEdit={canEdit}
+                                    canDelete={canDelete}
                                 />
                             </motion.div>
                         ))}
@@ -308,12 +312,12 @@ export default function HouseDetails() {
                 ) : (
                     <div className="text-center py-12 bg-white rounded-xl border border-slate-200">
                         <DoorOpen className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                        <h3 className="text-lg font-semibold text-slate-800 mb-2">No rooms yet</h3>
-                        <p className="text-slate-500 mb-4">Add rooms to this house to start managing occupants</p>
+                        <h3 className="text-lg font-semibold text-slate-800 mb-2">Još nema soba</h3>
+                        <p className="text-slate-500 mb-4">Dodajte sobu ručno ako nije u rooming listi</p>
                         {canEdit && (
                             <Button onClick={() => setIsAddingRoom(true)}>
                                 <Plus className="w-4 h-4 mr-2" />
-                                Add First Room
+                                Dodaj prvu sobu
                             </Button>
                         )}
                     </div>
@@ -371,20 +375,20 @@ export default function HouseDetails() {
             <Dialog open={isAddingRoom} onOpenChange={setIsAddingRoom}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Add New Room</DialogTitle>
+                        <DialogTitle>Dodaj sobu</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
-                            <Label htmlFor="roomNumber">Room Number</Label>
+                            <Label htmlFor="roomNumber">Broj sobe</Label>
                             <Input
                                 id="roomNumber"
                                 value={newRoomData.room_number}
                                 onChange={(e) => setNewRoomData({...newRoomData, room_number: e.target.value})}
-                                placeholder="e.g., 101, A1"
+                                placeholder="npr. 101, B3, A1"
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="roomStructure">Room Structure</Label>
+                            <Label htmlFor="roomStructure">Struktura sobe</Label>
                             <Input
                                 id="roomStructure"
                                 value={newRoomData.room_structure}
@@ -404,10 +408,10 @@ export default function HouseDetails() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsAddingRoom(false)}>Cancel</Button>
+                        <Button variant="outline" onClick={() => setIsAddingRoom(false)}>Otkaži</Button>
                         <Button onClick={handleAddRoom} disabled={isSaving || !newRoomData.room_number}>
                             {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                            Add Room
+                            Sačuvaj
                         </Button>
                     </DialogFooter>
                 </DialogContent>

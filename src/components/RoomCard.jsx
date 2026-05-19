@@ -45,7 +45,7 @@ function formatStayDate(value) {
     return s;
 }
 
-export default function RoomCard({ room, onUpdate, onDelete, canEdit = true }) {
+export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, canDelete = false }) {
     if (!room?.id) return null;
 
     const occupantNames = normalizeNames(room.occupant_names);
@@ -145,9 +145,17 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true }) {
     };
 
     const handleDelete = async () => {
+        if (!canDelete) return;
+        if (!confirm('Da li ste sigurni da želite da obrišete ovu sobu?')) return;
         setIsDeleting(true);
-        await base44.entities.Room.delete(room.id);
-        onDelete();
+        try {
+            await base44.entities.Room.delete(room.id);
+            onDelete();
+        } catch (e) {
+            alert(e.message || 'Brisanje sobe nije uspelo');
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     const addOccupant = () => {
@@ -211,19 +219,23 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true }) {
                                 >
                                     TAX {room.tax_paid === true ? 'Paid' : 'Unpaid'}
                                 </span>
-                                {canEdit && (
-                                    <motion.div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)}>
-                                            <Edit2 className="w-3.5 h-3.5 text-slate-400" />
-                                        </Button>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDelete} disabled={isDeleting}>
-                                            {isDeleting ? (
-                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                            ) : (
-                                                <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                                            )}
-                                        </Button>
-                                    </motion.div>
+                                {(canEdit || canDelete) && (
+                                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {canEdit && (
+                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)}>
+                                                <Edit2 className="w-3.5 h-3.5 text-slate-400" />
+                                            </Button>
+                                        )}
+                                        {canDelete && (
+                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleDelete} disabled={isDeleting}>
+                                                {isDeleting ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                ) : (
+                                                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                                                )}
+                                            </Button>
+                                        )}
+                                    </div>
                                 )}
                             </motion.div>
                         </motion.div>
