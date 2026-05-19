@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
@@ -92,6 +92,13 @@ export default function Home() {
 
     const houseScope =
         filterByUser === 'all' ? 'all' : `user&userId=${encodeURIComponent(filterByUser)}`;
+
+    useEffect(() => {
+        if (filterByUser !== 'all') {
+            setSelectedLocation(null);
+            setSelectedHouses(new Set());
+        }
+    }, [filterByUser]);
 
     const houseList = Array.isArray(houses) ? houses : [];
     const roomList = Array.isArray(rooms) ? rooms : [];
@@ -201,6 +208,7 @@ export default function Home() {
         const loc = (house.location || '').trim();
         const locationMatch =
             !selectedLocation ||
+            selectedLocation === '__all__' ||
             (selectedLocation === '__unlocated__'
                 ? !loc || !ALL_LOCATIONS.includes(loc)
                 : loc === selectedLocation);
@@ -229,7 +237,11 @@ export default function Home() {
         return !loc || !ALL_LOCATIONS.includes(loc);
     });
 
+    const userFilteredRooms = userFilteredHouses.flatMap((h) => getRoomsForHouse(h.id));
+
     const isLoading = housesLoading || roomsLoading;
+    const isUserFilterActive = filterByUser !== 'all' && canFilterByAllUsers;
+    const showLocationPicker = !searchQuery && !selectedLocation && userFilteredHouses.length > 0;
     const loadError = housesError || roomsError;
 
     const toggleSelectAll = () => {
@@ -410,7 +422,34 @@ export default function Home() {
                             </Button>
                         </div>
                     </div>
-                    
+                    {isUserFilterActive && (
+                        <p className="text-sm text-slate-600 mb-2">
+                            Korisnik: <strong>{userDisplayName(filterUser) || '…'}</strong>
+                            {' — '}
+                            <strong>{userFilteredHouses.length}</strong> kuća
+                            {activeLocations.length > 0 && (
+                                <>
+                                    {' '}
+                                    (
+                                    {activeLocations.join(', ')}
+                                    {housesWithoutLocation.length > 0 ? ', Bez lokacije' : ''})
+                                </>
+                            )}
+                            {userFilteredHouses.length === 0 && (
+                                <span className="text-amber-700">
+                                    {' '}
+                                    — dodelite kuće u Korisnici
+                                </span>
+                            )}
+                            {showLocationPicker && userFilteredHouses.length > 0 && (
+                                <span className="text-slate-500">
+                                    {' '}
+                                    · izaberite lokaciju ispod ili „Sve zajedno”
+                                </span>
+                            )}
+                        </p>
+                    )}
+
                     {isAdmin && (selectedLocation || searchQuery) && filteredHouses.length > 0 && (
                         <div className="flex items-center gap-2 mt-4 bg-white border border-slate-200 rounded-lg p-3">
                             <Button
@@ -499,10 +538,36 @@ export default function Home() {
                 </AnimatePresence>
 
                 {/* Location Folders */}
-                {!isLoading && !searchQuery && !selectedLocation && userFilteredHouses.length > 0 && (
+                {!isLoading && showLocationPicker && (
                     <div className="mb-8">
-                        <h2 className="text-lg font-semibold text-slate-700 mb-4">Lokacije</h2>
+                        <h2 className="text-lg font-semibold text-slate-700 mb-1">
+                            {isUserFilterActive
+                                ? `Lokacije — ${userDisplayName(filterUser)}`
+                                : 'Lokacije'}
+                        </h2>
+                        {isUserFilterActive && activeLocations.length > 1 && (
+                            <p className="text-sm text-slate-500 mb-4">
+                                Kuće su u više lokacija — otvorite jednu po jednu ili „Sve zajedno”.
+                            </p>
+                        )}
+                        {!isUserFilterActive && (
+                            <p className="text-sm text-slate-500 mb-4">
+                                Izaberite lokaciju ili prikažite sve kuće odjednom.
+                            </p>
+                        )}
                         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <LocationFolder
+                                key="__all__"
+                                location="Sve zajedno"
+                                houses={userFilteredHouses.length}
+                                totalRooms={userFilteredRooms.length}
+                                totalOccupants={userFilteredRooms.reduce(
+                                    (s, r) => s + (r.current_occupants || 0),
+                                    0,
+                                )}
+                                onClick={() => openLocation('__all__')}
+                                isSelected={false}
+                            />
                             {activeLocations.map((location) => {
                                 const stats = getLocationStats(location);
                                 return (
@@ -548,7 +613,8 @@ export default function Home() {
 
                 {/* Selected location header */}
                 {selectedLocation && (
-                    <div className="flex items-center gap-3 mb-6 flex-wrap">
+                    <>
+                    <div className="flex items-center gap-3 mb-4 flex-wrap">
                         <Button
                             variant="outline"
                             size="sm"
@@ -559,14 +625,24 @@ export default function Home() {
                             className="gap-2"
                         >
                             <ArrowLeft className="w-4 h-4" />
-                            Nazad
+                            {isUserFilterActive ? 'Lokacije' : 'Nazad'}
                         </Button>
                         <h2 className="text-xl font-bold text-slate-800">
-                            {selectedLocation === '__unlocated__' ? 'Bez lokacije' : selectedLocation}
+                            {selectedLocation === '__unlocated__'
+                                ? 'Bez lokacije'
+                                : selectedLocation === '__all__'
+                                  ? 'Sve zajedno'
+                                  : selectedLocation}
+                            {isUserFilterActive && (
+                                <span className="text-base font-normal text-slate-500">
+                                    {' '}
+                                    · {userDisplayName(filterUser)}
+                                </span>
+                            )}
                         </h2>
                         <span className="text-slate-500 text-sm">— {filteredHouses.length} {filteredHouses.length === 1 ? 'kuća' : 'kuće/kuća'}</span>
-                        <motion.div className="ml-auto flex flex-wrap gap-2">
-                            {canManageHouses && (
+                        <div className="ml-auto flex flex-wrap gap-2">
+                            {canManageHouses && selectedLocation !== '__all__' && selectedLocation !== '__unlocated__' && (
                                 <Button
                                     size="sm"
                                     onClick={openAddHouseDialog}
@@ -576,6 +652,7 @@ export default function Home() {
                                     Dodaj kuću
                                 </Button>
                             )}
+                            {selectedLocation !== '__all__' && selectedLocation !== '__unlocated__' && (
                             <Button
                                 variant="outline"
                                 size="sm"
@@ -585,12 +662,54 @@ export default function Home() {
                                 <FileDown className="w-4 h-4" />
                                 Izvezi XML (smena)
                             </Button>
-                        </motion.div>
+                            )}
+                        </div>
                     </div>
+                    {isUserFilterActive && (
+                        <div className="flex flex-wrap gap-2 mb-6">
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant={selectedLocation === '__all__' ? 'secondary' : 'outline'}
+                                onClick={() => openLocation('__all__')}
+                            >
+                                Sve zajedno
+                            </Button>
+                            {activeLocations.map((loc) => (
+                                <Button
+                                    key={loc}
+                                    type="button"
+                                    size="sm"
+                                    variant={selectedLocation === loc ? 'secondary' : 'outline'}
+                                    onClick={() => openLocation(loc)}
+                                >
+                                    {loc}
+                                    <span className="ml-1.5 text-slate-500">
+                                        ({getLocationStats(loc).houses})
+                                    </span>
+                                </Button>
+                            ))}
+                            {housesWithoutLocation.length > 0 && (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant={selectedLocation === '__unlocated__' ? 'secondary' : 'outline'}
+                                    onClick={() => openLocation('__unlocated__')}
+                                >
+                                    Bez lokacije ({housesWithoutLocation.length})
+                                </Button>
+                            )}
+                        </div>
+                    )}
+                    </>
                 )}
 
                 {/* Houses Grid */}
-                {(!selectedLocation && !searchQuery) ? null : isLoading ? (
+                {(!selectedLocation && !searchQuery) ? (
+                    <motion.div className="text-center py-10 text-slate-500 text-sm" layout>
+                        Izaberite lokaciju iznad ili koristite pretragu da otvorite kuće.
+                    </motion.div>
+                ) : isLoading ? (
                     <div className={`grid gap-6 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
                         {[1, 2, 3, 4, 5, 6].map(i => (
                             <div key={i} className="bg-white rounded-xl border border-slate-200 p-6">
@@ -679,23 +798,23 @@ export default function Home() {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
                                 <div className="text-3xl font-bold text-slate-800">{houseList.length}</div>
-                                <div className="text-sm text-slate-500">Total Houses</div>
+                                <div className="text-sm text-slate-500">Ukupno kuća</div>
                             </div>
                             <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
                                 <div className="text-3xl font-bold text-slate-800">{roomList.length}</div>
-                                <div className="text-sm text-slate-500">Total Rooms</div>
+                                <div className="text-sm text-slate-500">Ukupno soba</div>
                             </div>
                             <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
                                 <div className="text-3xl font-bold text-green-600">
                                     {roomList.filter((r) => r.current_occupants > 0).length}
                                 </div>
-                                <div className="text-sm text-slate-500">Occupied Rooms</div>
+                                <div className="text-sm text-slate-500">Zauzete sobe</div>
                             </div>
                             <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
                                 <div className="text-3xl font-bold text-blue-600">
                                     {roomList.reduce((sum, r) => sum + (r.current_occupants || 0), 0)}
                                 </div>
-                                <div className="text-sm text-slate-500">Total Occupants</div>
+                                <div className="text-sm text-slate-500">Ukupno gostiju</div>
                             </div>
                         </div>
                     </div>

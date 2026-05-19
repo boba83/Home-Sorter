@@ -3,8 +3,9 @@
  */
 
 const SEX_ALT = 'MR|MRS|CHD|INF|MS|MISS|DR';
-/** Sobe: 4, 101, B3, B5, A12 */
-const ROOM = '[A-Za-z]\\d{1,3}|\\d{1,4}[A-Za-z]?';
+/** Sobe: 4, 101, B3, A1, A 1 (PDF često razdvoji slovo i broj) */
+const ROOM = '[A-Za-z]\\s*\\d{1,3}|[A-Za-z]\\d{1,3}|\\d{1,4}[A-Za-z]?';
+const VOUCHER_IN_LINE = /\d{4,}\/\d{2,}/;
 
 const PRIMARY_GUEST = new RegExp(
   `^\\d+\\s+(${SEX_ALT})\\s+(.+?)\\s+(\\d+\\/\\d{2,})\\s+(\\S+)\\s+(${ROOM})\\s+(.+)$`,
@@ -146,22 +147,31 @@ function cleanGuestName(namePart) {
     .trim();
 }
 
+function normalizeRoomNumber(raw) {
+  return String(raw || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/([A-Za-z])\s+(\d)/g, '$1$2')
+    .toUpperCase();
+}
+
 function parsePrimaryGuestLine(line) {
   const withVoucher = line.match(PRIMARY_GUEST);
   if (withVoucher) {
     return {
       sex: withVoucher[1],
       name: withVoucher[2],
-      roomNo: withVoucher[5],
+      roomNo: normalizeRoomNumber(withVoucher[5]),
       tail: withVoucher[6],
     };
   }
+  if (VOUCHER_IN_LINE.test(line)) return null;
   const noVoucher = line.match(PRIMARY_NO_VOUCHER);
   if (noVoucher) {
     return {
       sex: noVoucher[1],
       name: noVoucher[2],
-      roomNo: noVoucher[3],
+      roomNo: normalizeRoomNumber(noVoucher[3]),
       tail: noVoucher[4],
     };
   }
@@ -213,6 +223,10 @@ export function parseAstraRoomingListLines(rawLines, defaultLocation) {
   const setHotel = (name) => {
     const n = cleanHotelName(name);
     if (!isValidHotelName(n)) return;
+    if (currentHotel && n.toLowerCase() === currentHotel.toLowerCase()) {
+      pendingHotel = false;
+      return;
+    }
     flush();
     pendingHotel = false;
     currentHotel = n;
@@ -283,7 +297,7 @@ export function parseAstraRoomingListLines(rawLines, defaultLocation) {
       const { phone, rest } = extractPhoneAndRest(primary.tail);
       const { structure, agency, bus_info } = splitStructureAgencyBus(rest);
       buf = {
-        roomNumber: String(primary.roomNo).toUpperCase(),
+        roomNumber: normalizeRoomNumber(primary.roomNo),
         structure,
         occupants: [formatOccupant(sex, namePart)],
         phone,
@@ -326,6 +340,31 @@ export function scanHotelNamesInText(text) {
 }
 
 export function looksLikeAstraRoomingList(text) {
-  return /(?:^|\n)\s*Hotel\s*\.{0,3}\s*:?\s*\S/im.test(text) &&
-    /\bARR:\s*\d{1,2}\.\d{1,2}\.\d{4}/i.test(text);
+  const t = String(text || '');
+  if (/\bROOMING\s+LIST\b/i.test(t) && /\bHotel\s*:/i.test(t)) return true;
+  if (/(?:^|\n)\s*Hotel\s*\.{0,3}\s*:?\s*\S/im.test(t) && /\bARR:\s*\d{1,2}\.\d{1,2}\.\d{4}/i.test(t)) {
+    return true;
+  }
+  if (/\bNo\s+Sex\b/i.test(t) && /\b(MR|MRS)\b.+\d{4,}\/\d{2}/im.test(t)) return true;
+  return false;
+}
+
+/** Podeli spojene PDF redove (retko, ali pomaže kad pdf-parse spoji kolone) */
+export function splitPdfTextToLines(text) {
+  const raw = String(text || '').split(/\r?\n/);
+  const out = [];
+  for (let rawLine of raw) {
+    let line = rawLine.replace(/\u00A0/g, ' ').trim();
+    if (!line) continue;
+    const parts = line.split(/(?=\s*\d+\s+(?:MR|MRS|CHD|INF|MS|MISS|DR)\s+)/i);
+    if (parts.length > 1) {
+      for (const p of parts) {
+        const t = p.trim();
+        if (t) out.push(t);
+      }
+    } else {
+      out.push(line);
+    }
+  }
+  return out;
 }

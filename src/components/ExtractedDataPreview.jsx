@@ -83,7 +83,8 @@ export default function ExtractedDataPreview({ data, importLocation, onImportCom
                 <div className="px-4 py-3 border-b bg-slate-50 space-y-2">
                     <p className="text-sm text-slate-600">
                         Proverite da su <strong>sve kuće</strong> u listi i da imaju sobe (broj u zagradi).
-                        Crveno = kuća je u PDF-u ali <strong>nijedna soba nije prepoznata</strong> — ne importujte dok ne popravite PDF ili parser.
+                        Crveno = kuća je u PDF-u ali <strong>nijedna soba nije prepoznata</strong> (npr. pogrešan format sobe).
+                        Sobe tipa <strong>A1</strong>, <strong>B3</strong> i gosti preko više strana sada se prepoznaju.
                     </p>
                     {missingRoomsFiltered.length > 0 && (
                         <p className="text-sm font-medium text-red-700">

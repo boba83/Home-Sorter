@@ -28,6 +28,7 @@ import {
   looksLikeAstraRoomingList,
   parseAstraRoomingListLines,
   scanHotelNamesInText,
+  splitPdfTextToLines,
 } from './lib/astraRoomingParser.js';
 import { notifyOnTaskCreated, notifyOnTaskUpdated } from './lib/taskNotifications.js';
 import { sendInviteEmail, isMailConfigured } from './lib/mail.js';
@@ -346,8 +347,13 @@ app.get('/api/rooms', authMiddleware, async (req, res) => {
   const where = {};
   if (req.query.house_id) where.houseId = req.query.house_id;
   if (req.query.id) where.id = req.query.id;
-  if (!isAdmin(req.userRole)) {
-    const houseIds = await accessibleHouseIds(prisma, req.userId, req.userRole);
+  if (!hasAllHousesAccess(req.userRole, req.userCanAccessAllHouses)) {
+    const houseIds = await accessibleHouseIds(
+      prisma,
+      req.userId,
+      req.userRole,
+      req.userCanAccessAllHouses,
+    );
     if (!houseIds?.length) return res.json([]);
     where.houseId = req.query.house_id
       ? houseIds.includes(req.query.house_id)
@@ -734,12 +740,19 @@ app.delete('/api/users/:id', authMiddleware, adminOnly, async (req, res) => {
 app.post('/api/import/pdf', authMiddleware, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'Nema fajla' });
   try {
-    const parsed = await pdfParse(req.file.buffer);
-    const text = parsed.text || '';
-    const { entries, location, hotels, hotelsMissingRooms } = parsePdfTextToEntries(text);
+    const pdfData = await pdfParse(req.file.buffer);
+    const text = pdfData.text || '';
+    const importData = parsePdfTextToEntries(text);
     res.json({
       status: 'success',
-      output: { entries, location, hotels, hotelsMissingRooms },
+      output: {
+        entries: importData.entries,
+        location: importData.location,
+        hotels: importData.hotels,
+        hotelsMissingRooms: importData.hotelsMissingRooms,
+        parseMode: importData.parseMode,
+        warnings: importData.warnings,
+      },
     });
   } catch (e) {
     console.error(e);
@@ -763,7 +776,7 @@ function normalizeImportDate(dateStr) {
 }
 
 /** Atomski uvoz kuća + soba (izbegava delimičan upis ako bulk na klijentu pukne) */
-app.post('/api/import/commit', authMiddleware, adminOnly, async (req, res) => {
+app.post('/api/import/commit', authMiddleware, editorOnly, async (req, res) => {
   const { location: locRaw, entries: entriesRaw } = req.body || {};
   const location =
     locRaw != null && String(locRaw).trim() !== '' ? String(locRaw).trim() : null;
@@ -901,26 +914,41 @@ function pushEntry(entries, entry) {
 }
 
 function parsePdfTextToEntries(text) {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = splitPdfTextToLines(text)
+    .map((l) => l.trim())
+    .filter(Boolean);
   const location = detectLocationFromText(text);
 
   if (looksLikeAstraRoomingList(text)) {
     const parsed = parseAstraRoomingListLines(lines, location);
-    const scanned = scanHotelNamesInText(text);
+    const scanned = scanHotelNamesInText(text).filter(
+      (h) => h && !/TOTAL|\/ADT\b|ROOMS\s*:/i.test(h),
+    );
     const hotelSet = new Set([...parsed.hotels, ...scanned]);
     const roomCount = new Map();
     for (const e of parsed.entries) {
       roomCount.set(e.house_name, (roomCount.get(e.house_name) || 0) + 1);
     }
-    const hotels = [...hotelSet].filter(
-      (h) => h && !/TOTAL|\/ADT\b|ROOMS\s*:/i.test(h),
+    const hotels = [...hotelSet];
+    const hotelsMissingRooms = parsed.hotelsMissingRooms.filter((h) =>
+      hotels.includes(h),
     );
-    const hotelsMissingRooms = hotels.filter((h) => !roomCount.get(h));
+    const warnings = [];
+    if (parsed.entries.length === 0) {
+      warnings.push('Nijedna soba nije prepoznata — proverite format PDF-a.');
+    }
+    if (hotelsMissingRooms.length > 0) {
+      warnings.push(
+        `Kuće bez soba: ${hotelsMissingRooms.join(', ')}`,
+      );
+    }
     return {
       entries: parsed.entries,
       location,
       hotels,
       hotelsMissingRooms,
+      parseMode: 'astra',
+      warnings,
     };
   }
 
@@ -1000,7 +1028,14 @@ function parsePdfTextToEntries(text) {
   }
 
   const hotels = [...new Set(entries.map((e) => e.house_name).filter(Boolean))];
-  return { entries, location, hotels, hotelsMissingRooms: [] };
+  return {
+    entries,
+    location,
+    hotels,
+    hotelsMissingRooms: [],
+    parseMode: 'generic',
+    warnings: entries.length === 0 ? ['PDF format nije prepoznat kao Astra rooming lista.'] : [],
+  };
 }
 
 async function findHouseForImport(tx, houseName, location) {

@@ -16,7 +16,7 @@ const ALL_LOCATIONS = [
 ];
 import { Badge } from "@/components/ui/badge";
 import { Link } from 'react-router-dom';
-import { createPageUrl, isHouseAssignedToUser } from '@/utils';
+import { createPageUrl, isHouseAssignedToUser, isUserResponsibleForHouse } from '@/utils';
 import RoomCard from '@/components/RoomCard';
 import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from 'framer-motion';
@@ -76,7 +76,7 @@ export default function HouseDetails() {
     const canAccessAllHouses = Boolean(currentUser?.can_access_all_houses);
     const memberIds = house?.member_user_ids || [];
     const isHouseMember = currentUser?.id && memberIds.includes(currentUser.id);
-    const isResponsible = house?.responsible_person && currentUser?.full_name === house.responsible_person;
+    const isResponsible = isUserResponsibleForHouse(house, currentUser);
     const assignedToFilterUser =
         viewScope === 'user' && filterUser && house
             ? isHouseAssignedToUser(house, filterUser)
@@ -181,11 +181,15 @@ export default function HouseDetails() {
             <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex items-center justify-center">
                 <div className="text-center">
                     <Building2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                    <h2 className="text-xl font-semibold text-slate-800 mb-2">House not found</h2>
+                    <h2 className="text-xl font-semibold text-slate-800 mb-2">Kuća nije pronađena</h2>
+                    <p className="text-slate-500 text-sm mb-4 max-w-md">
+                        Nema pristupa ovoj kući ili je obrisana. Admin vidi sve kuće; običan korisnik samo dodeljene.
+                        Vratite se i otvorite kuću iz liste (Sarti / Toroni / Sve kuće).
+                    </p>
                     <Link to={createPageUrl('Home')}>
                         <Button variant="outline">
                             <ArrowLeft className="w-4 h-4 mr-2" />
-                            Back to Home
+                            Nazad na početnu
                         </Button>
                     </Link>
                 </div>

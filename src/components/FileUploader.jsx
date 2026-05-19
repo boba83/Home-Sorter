@@ -71,18 +71,33 @@ export default function FileUploader({ onDataExtracted, defaultLocation = null }
             const entries = output.entries ?? (Array.isArray(output) ? output : []);
             if (!entries.length) {
                 setStatus('error');
+                const hint = output.warnings?.[0] || output.parseMode === 'generic'
+                    ? 'Format nije prepoznat kao Astra rooming lista.'
+                    : '';
                 alert(
                     'PDF je učitan, ali nije prepoznat nijedan red (soba / gost). ' +
-                    'Proverite format ili unesite sobe ručno.'
+                    (hint ? `${hint} ` : '') +
+                    'Proverite PDF ili dodajte kuće/sobe ručno.'
                 );
                 return;
+            }
+            const missing = output.hotelsMissingRooms ?? [];
+            if (missing.length > 0) {
+                alert(
+                    `Upozorenje: kuće bez prepoznatih soba: ${missing.join(', ')}.\n` +
+                    'U preview-u su crvene — import je blokiran dok se ne reši.'
+                );
+            } else if (output.warnings?.length) {
+                alert(output.warnings.join('\n'));
             }
             setStatus('success');
             onDataExtracted({
                 entries,
                 location: defaultLocation || output.location || null,
                 hotels: output.hotels ?? [],
-                hotelsMissingRooms: output.hotelsMissingRooms ?? [],
+                hotelsMissingRooms: missing,
+                parseMode: output.parseMode,
+                warnings: output.warnings ?? [],
             });
         } else {
             setStatus('error');
