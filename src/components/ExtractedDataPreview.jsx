@@ -121,6 +121,7 @@ export default function ExtractedDataPreview({ data, importLocation, onImportCom
                                 <TableHead>Stay Period</TableHead>
                                 <TableHead>Capacity</TableHead>
                                 <TableHead>Occupants</TableHead>
+                                <TableHead className="whitespace-nowrap">Ugovor</TableHead>
                                 <TableHead className="whitespace-nowrap">Phone</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -169,6 +170,11 @@ export default function ExtractedDataPreview({ data, importLocation, onImportCom
                                                 <Badge className="bg-amber-500 text-white text-xs">BUS</Badge>
                                             )}
                                         </div>
+                                    </TableCell>
+                                    <TableCell className="text-sm font-semibold text-blue-600 tabular-nums whitespace-nowrap">
+                                        {entry.contract_number || (
+                                            <span className="text-slate-400 font-normal">-</span>
+                                        )}
                                     </TableCell>
                                     <TableCell className="text-sm text-slate-600">
                                         {entry.contact_phone ? (

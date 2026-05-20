@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,20 @@ function normalizeNames(raw) {
     return [];
 }
 
-/** Prikaz datuma kao na rooming listi / kartici (npr. 18.08.2025) */
+/** Uklanja dupli telefon iz napomene ako je isti kao contact_phone (PDF ponekad duplira). */
+function stripPhoneFromNotesText(notes, phone) {
+    if (!notes?.trim() || !phone?.trim()) return (notes || '').trim();
+    let n = notes.trim();
+    const p = phone.trim();
+    const esc = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    n = n.replace(new RegExp(esc, 'gi'), ' ');
+    n = n.replace(/\d{2,3}\s*\/\s*\d{6,}/g, (m) => {
+        const norm = (s) => s.replace(/\D/g, '');
+        return norm(m) === norm(p) ? ' ' : m;
+    });
+    return n.replace(/\s{2,}/g, ' ').replace(/^[,/|•\-\s]+|[,/|•\-\s]+$/g, '').trim();
+}
+
 function formatStayDate(value) {
     if (!value) return '';
     const s = String(value).trim();
@@ -64,6 +77,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
         stay_to: room.stay_to || '',
         tax_paid: room.tax_paid === true,
         contact_phone: room.contact_phone || '',
+        contract_number: room.contract_number || '',
     });
     const [newVisitEntry, setNewVisitEntry] = useState('');
     const [visitExpanded, setVisitExpanded] = useState(true);
@@ -77,7 +91,11 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
         return [{ text: visitStr, timestamp: null }];
     };
 
-    const visitHistory = parseVisitHistory(room.visit);
+    const notesDisplay = useMemo(
+        () => stripPhoneFromNotesText(room.notes, room.contact_phone),
+        [room.notes, room.contact_phone]
+    );
+
     const [newOccupant, setNewOccupant] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
@@ -178,14 +196,15 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
     return (
         <>
             <motion.div
+                className="h-full"
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.2 }}
             >
-                <Card className="group hover:shadow-md transition-shadow border border-slate-200/90 bg-white rounded-xl relative overflow-hidden shadow-sm">
-                    <CardContent className="p-4 sm:p-5">
-                        {/* Header — broj sobe, struktura, TAX + akcije */}
-                        <motion.div className="flex items-start justify-between gap-3 mb-4">
+                <Card className="group hover:shadow-md transition-shadow border border-slate-200/90 bg-white rounded-xl relative overflow-hidden shadow-sm h-full min-h-[30rem] flex flex-col">
+                    <CardContent className="p-4 sm:p-5 flex flex-col flex-1 min-h-0">
+                        {/* Header — broj sobe, struktura, telefon, broj ugovora, TAX + akcije */}
+                        <motion.div className="flex items-start justify-between gap-3 mb-3 shrink-0">
                             <motion.div className="flex items-center gap-3 min-w-0">
                                 <motion.div className={`w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm ${
                                     occupancy > 0
@@ -209,6 +228,11 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                             {room.contact_phone}
                                         </p>
                                     ) : null}
+                                    {room.contract_number ? (
+                                        <p className="text-xs mt-1 font-semibold tabular-nums text-blue-600 tracking-tight">
+                                            Broj ugovora: {room.contract_number}
+                                        </p>
+                                    ) : null}
                                 </motion.div>
                             </motion.div>
                             <motion.div className="flex flex-col items-end gap-1.5 flex-shrink-0">
@@ -222,7 +246,29 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                 {(canEdit || canDelete) && (
                                     <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                         {canEdit && (
-                                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsEditing(true)}>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7"
+                                                onClick={() => {
+                                                    setEditData({
+                                                        room_number: room.room_number || '',
+                                                        room_structure: room.room_structure || '',
+                                                        capacity: room.capacity || 1,
+                                                        occupant_names: normalizeNames(room.occupant_names),
+                                                        notes: room.notes || '',
+                                                        excursion: room.excursion || '',
+                                                        visit: room.visit || '',
+                                                        stay_from: room.stay_from || '',
+                                                        stay_to: room.stay_to || '',
+                                                        tax_paid: room.tax_paid === true,
+                                                        contact_phone: room.contact_phone || '',
+                                                        contract_number: room.contract_number || '',
+                                                    });
+                                                    setNewVisitEntry('');
+                                                    setIsEditing(true);
+                                                }}
+                                            >
                                                 <Edit2 className="w-3.5 h-3.5 text-slate-400" />
                                             </Button>
                                         )}
@@ -240,8 +286,9 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                             </motion.div>
                         </motion.div>
 
+                        <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-0.5">
                         {/* Occupancy + gosti (kao na preview-u) */}
-                        <motion.div className="mb-3">
+                        <motion.div>
                             <motion.div className="flex items-center justify-between text-sm mb-2">
                                 <span className="text-slate-600 flex items-center gap-1.5 font-medium">
                                     <Users className="w-3.5 h-3.5 text-slate-500" />
@@ -279,7 +326,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
 
                         {/* Termin boravka — istaknuto (ljubičasta traka kao u preview tabeli) */}
                         {(room.stay_from || room.stay_to) && (
-                            <motion.div className="flex items-center gap-2.5 text-sm rounded-xl border border-violet-200/80 bg-gradient-to-r from-violet-50 to-purple-50 px-3.5 py-2.5 mb-3 shadow-sm">
+                            <motion.div className="flex items-center gap-2.5 text-sm rounded-xl border border-violet-200/80 bg-gradient-to-r from-violet-50 to-purple-50 px-3.5 py-2.5 shadow-sm">
                                 <Calendar className="w-4 h-4 text-violet-600 flex-shrink-0" />
                                 <span className="font-semibold text-violet-900 tabular-nums">
                                     {formatStayDate(room.stay_from) || '?'}
@@ -291,7 +338,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
 
                         {/* Visit record */}
                         {visitHistory.length > 0 && (
-                            <motion.div className="bg-amber-50 border border-amber-200/90 rounded-xl px-3 py-2.5 mb-3 shadow-sm">
+                            <motion.div className="bg-amber-50 border border-amber-200/90 rounded-xl px-3 py-2.5 shadow-sm">
                                 <button
                                     type="button"
                                     className="flex items-center justify-between w-full text-sm font-semibold text-amber-950 mb-1"
@@ -329,7 +376,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
 
                         {/* Ekskurzija */}
                         {room.excursion && (
-                            <motion.div className="flex items-start gap-2.5 text-sm mb-3">
+                            <motion.div className="flex items-start gap-2.5 text-sm">
                                 <span className="w-5 h-5 rounded-md flex items-center justify-center bg-blue-500 flex-shrink-0 shadow-sm">
                                     <Sailboat className="w-3 h-3 text-white" />
                                 </span>
@@ -339,16 +386,17 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                 </p>
                             </motion.div>
                         )}
+                        </div>
 
-                        {/* Napomena / agencija (npr. PORTO TRAVEL) */}
-                        {room.notes && (
-                            <motion.div className="flex items-start gap-2.5 pt-0.5 border-t border-slate-100 mt-1">
+                        {/* Napomena / agencija — bez duplog telefona (telefon je gore) */}
+                        {notesDisplay ? (
+                            <motion.div className="flex items-start gap-2.5 pt-3 mt-auto border-t border-slate-100 shrink-0">
                                 <FileText className="w-3.5 h-3.5 flex-shrink-0 text-slate-500 mt-0.5" />
                                 <span className="text-xs font-semibold text-slate-700 leading-relaxed tracking-wide uppercase">
-                                    {room.notes}
+                                    {notesDisplay}
                                 </span>
                             </motion.div>
-                        )}
+                        ) : null}
                     </CardContent>
 
                     {room.bus && (
@@ -497,12 +545,22 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                             />
                         </motion.div>
                         <motion.div className="space-y-2">
-                            <Label htmlFor="notes">Agencija / napomena (footer)</Label>
+                            <Label htmlFor="contract_number">Broj ugovora</Label>
+                            <Input
+                                id="contract_number"
+                                value={editData.contract_number}
+                                onChange={(e) => setEditData({ ...editData, contract_number: e.target.value })}
+                                placeholder="npr. 279846/25"
+                                className="font-semibold text-blue-700"
+                            />
+                        </motion.div>
+                        <motion.div className="space-y-2">
+                            <Label htmlFor="notes">Agencija / napomena</Label>
                             <Input
                                 id="notes"
                                 value={editData.notes}
                                 onChange={(e) => setEditData({...editData, notes: e.target.value})}
-                                placeholder="npr. PORTO TRAVEL"
+                                placeholder="npr. PORTO TRAVEL (telefon unesite gore)"
                             />
                         </motion.div>
                         <motion.div className="space-y-2 border-t pt-4">

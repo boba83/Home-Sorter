@@ -31,6 +31,19 @@ async function main() {
     });
   }
 
+  const excursionCount = await prisma.excursion.count();
+  if (excursionCount === 0) {
+    await prisma.excursion.createMany({
+      data: [
+        { name: 'Robinzon', adlPrice: 36, icon: 'boat', theme: 'cyan', sortOrder: 0 },
+        { name: 'Plava laguna', adlPrice: 34, icon: 'boat', theme: 'blue', sortOrder: 1 },
+        { name: 'Atos', adlPrice: 29, icon: 'boat', theme: 'violet', sortOrder: 2 },
+        { name: 'Sunset', adlPrice: 16, icon: 'boat', theme: 'orange', sortOrder: 3 },
+        { name: 'Solun', adlPrice: 30, icon: 'bus', theme: 'emerald', sortOrder: 4 },
+      ],
+    });
+  }
+
   console.log('Seed OK');
   console.log(`Login: ${email} / ${password}`);
 }

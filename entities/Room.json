@@ -70,6 +70,14 @@
       "format": "date",
       "description": "End date of stay"
     },
+    "contact_phone": {
+      "type": "string",
+      "description": "Guest contact phone (shown in room header)"
+    },
+    "contract_number": {
+      "type": "string",
+      "description": "Contract / voucher number e.g. 279846/25 from rooming list"
+    },
     "bus": {
       "type": "boolean",
       "description": "Indicates if guests use bus service"

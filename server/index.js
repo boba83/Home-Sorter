@@ -22,8 +22,15 @@ import {
   taskFromBody,
   serializeNotification,
   serializeInvite,
+  serializeExcursion,
+  excursionFromBody,
   displayFullName,
 } from './lib/serialize.js';
+import {
+  EXCURSION_THEMES,
+  normalizeExcursionTheme,
+  normalizeExcursionIcon,
+} from './lib/excursionThemes.js';
 import {
   looksLikeAstraRoomingList,
   parseAstraRoomingListLines,
@@ -859,6 +866,7 @@ app.post('/api/import/commit', authMiddleware, editorOnly, async (req, res) => {
             stay_to: normalizeImportDate(entry.stay_to),
             notes: entry.notes || '',
             contact_phone: entry.contact_phone || undefined,
+            contract_number: entry.contract_number || undefined,
             bus: hasBus,
           }),
         });
@@ -1196,6 +1204,84 @@ app.delete('/api/info/files/:id', authMiddleware, adminOnly, asyncRoute(async (r
   await prisma.infoFile.delete({ where: { id: record.id } });
   res.status(204).end();
 }));
+
+const DEFAULT_EXCURSIONS = [
+  { name: 'Robinzon', adlPrice: 36, icon: 'boat', theme: 'cyan', sortOrder: 0 },
+  { name: 'Plava laguna', adlPrice: 34, icon: 'boat', theme: 'blue', sortOrder: 1 },
+  { name: 'Atos', adlPrice: 29, icon: 'boat', theme: 'violet', sortOrder: 2 },
+  { name: 'Sunset', adlPrice: 16, icon: 'boat', theme: 'orange', sortOrder: 3 },
+  { name: 'Solun', adlPrice: 30, icon: 'bus', theme: 'emerald', sortOrder: 4 },
+];
+
+async function ensureDefaultExcursions() {
+  const count = await prisma.excursion.count();
+  if (count === 0) {
+    await prisma.excursion.createMany({ data: DEFAULT_EXCURSIONS });
+  }
+}
+
+app.get('/api/excursions', authMiddleware, async (req, res) => {
+  await ensureDefaultExcursions();
+  const rows = await prisma.excursion.findMany({
+    where: { active: true },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+  });
+  res.json(rows.map(serializeExcursion));
+});
+
+app.post('/api/excursions', authMiddleware, adminOnly, async (req, res) => {
+  const body = excursionFromBody(req.body);
+  if (!body.name) {
+    return res.status(400).json({ message: 'Naziv ekskurzije je obavezan' });
+  }
+  if (!Number.isFinite(body.adlPrice) || body.adlPrice < 0) {
+    return res.status(400).json({ message: 'Cena za odrasle (ADL) mora biti pozitivan broj' });
+  }
+  body.icon = normalizeExcursionIcon(body.icon ?? req.body.icon);
+  body.theme = normalizeExcursionTheme(body.theme ?? req.body.theme);
+  const maxOrder = await prisma.excursion.aggregate({ _max: { sortOrder: true } });
+  const created = await prisma.excursion.create({
+    data: {
+      name: body.name,
+      adlPrice: body.adlPrice,
+      chdPrice: body.chdPrice ?? null,
+      icon: body.icon,
+      theme: body.theme,
+      sortOrder: body.sortOrder ?? (maxOrder._max.sortOrder ?? -1) + 1,
+      active: true,
+    },
+  });
+  res.status(201).json(serializeExcursion(created));
+});
+
+app.patch('/api/excursions/:id', authMiddleware, adminOnly, async (req, res) => {
+  const body = excursionFromBody(req.body);
+  if (body.name === '') {
+    return res.status(400).json({ message: 'Naziv ne može biti prazan' });
+  }
+  if (body.adlPrice != null && (!Number.isFinite(body.adlPrice) || body.adlPrice < 0)) {
+    return res.status(400).json({ message: 'Cena za odrasle (ADL) mora biti pozitivan broj' });
+  }
+  if (body.chdPrice != null && (!Number.isFinite(body.chdPrice) || body.chdPrice < 0)) {
+    return res.status(400).json({ message: 'Cena za decu (CHD) mora biti pozitivan broj' });
+  }
+  if (body.theme != null) body.theme = normalizeExcursionTheme(body.theme);
+  if (body.icon != null) body.icon = normalizeExcursionIcon(body.icon);
+  const updated = await prisma.excursion.update({
+    where: { id: req.params.id },
+    data: body,
+  });
+  res.json(serializeExcursion(updated));
+});
+
+app.delete('/api/excursions/:id', authMiddleware, adminOnly, async (req, res) => {
+  await prisma.excursion.delete({ where: { id: req.params.id } });
+  res.status(204).end();
+});
+
+app.get('/api/excursions/meta', authMiddleware, adminOnly, (_req, res) => {
+  res.json({ themes: EXCURSION_THEMES, icons: ['boat', 'bus'] });
+});
 
 app.use((err, req, res, _next) => {
   console.error('[API]', req.method, req.path, err);

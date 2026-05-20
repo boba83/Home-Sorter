@@ -152,6 +152,7 @@ export function serializeRoom(r) {
     stay_from: r.stayFrom,
     stay_to: r.stayTo,
     contact_phone: r.contactPhone,
+    contract_number: r.contractNumber,
     bus: r.bus,
     tax_paid: r.taxPaid,
     created_date: r.createdAt?.toISOString?.() ?? r.createdAt,
@@ -208,6 +209,7 @@ export function roomFromBody(body) {
     stayFrom: body.stay_from,
     stayTo: body.stay_to,
     contactPhone: body.contact_phone ?? undefined,
+    contractNumber: body.contract_number ?? undefined,
     bus: body.bus ?? false,
     taxPaid: body.tax_paid ?? false,
   };
@@ -253,4 +255,38 @@ export function serializeNotification(n) {
     read: n.read,
     created_date: n.createdAt?.toISOString?.() ?? n.createdAt,
   };
+}
+
+export function serializeExcursion(e) {
+  const adl = Number(e.adlPrice);
+  const chd = e.chdPrice != null ? Number(e.chdPrice) : adl / 2;
+  return {
+    id: e.id,
+    name: e.name,
+    adl,
+    chd,
+    adl_price: adl,
+    chd_price: chd,
+    icon: e.icon,
+    theme: e.theme,
+    sort_order: e.sortOrder,
+    active: e.active,
+  };
+}
+
+export function excursionFromBody(body) {
+  const data = {};
+  if (body.name != null) data.name = String(body.name).trim();
+  if (body.adl_price != null || body.adl != null) {
+    data.adlPrice = Number(body.adl_price ?? body.adl);
+  }
+  if (body.chd_price !== undefined || body.chd !== undefined) {
+    const raw = body.chd_price ?? body.chd;
+    data.chdPrice = raw === '' || raw == null ? null : Number(raw);
+  }
+  if (body.icon != null) data.icon = body.icon === 'bus' ? 'bus' : 'boat';
+  if (body.theme != null) data.theme = String(body.theme);
+  if (body.sort_order != null) data.sortOrder = Number(body.sort_order);
+  if (body.active !== undefined) data.active = Boolean(body.active);
+  return data;
 }

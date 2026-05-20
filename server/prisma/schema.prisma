@@ -93,6 +93,7 @@ model Room {
   stayFrom           String?
   stayTo             String?
   contactPhone       String?
+  contractNumber     String?
   bus                Boolean   @default(false)
   taxPaid            Boolean   @default(false)
   createdAt          DateTime  @default(now())
@@ -126,6 +127,19 @@ model Task {
   comments       String   @default("[]")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+model Excursion {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  adlPrice  Float
+  chdPrice  Float?
+  icon      String   @default("boat")
+  theme     String   @default("cyan")
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model InfoFolder {

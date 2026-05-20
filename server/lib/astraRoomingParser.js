@@ -161,6 +161,7 @@ function parsePrimaryGuestLine(line) {
     return {
       sex: withVoucher[1],
       name: withVoucher[2],
+      contract_number: withVoucher[3].trim(),
       roomNo: normalizeRoomNumber(withVoucher[5]),
       tail: withVoucher[6],
     };
@@ -168,11 +169,18 @@ function parsePrimaryGuestLine(line) {
   if (VOUCHER_IN_LINE.test(line)) return null;
   const noVoucher = line.match(PRIMARY_NO_VOUCHER);
   if (noVoucher) {
+    let tail = noVoucher[4];
+    const vMatch = tail.match(/\b(\d{6}\/\d{2})\b/);
+    const contract_number = vMatch ? vMatch[1] : '';
+    if (vMatch) {
+      tail = tail.replace(vMatch[0], ' ').replace(/\s+/g, ' ').trim();
+    }
     return {
       sex: noVoucher[1],
       name: noVoucher[2],
+      contract_number,
       roomNo: normalizeRoomNumber(noVoucher[3]),
-      tail: noVoucher[4],
+      tail,
     };
   }
   return null;
@@ -187,8 +195,22 @@ function isContinuationLine(line) {
   return true;
 }
 
+function stripPhoneFromNotesText(notes, phone) {
+  if (!notes?.trim() || !phone?.trim()) return (notes || '').trim();
+  let n = notes.trim();
+  const p = phone.trim();
+  const esc = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  n = n.replace(new RegExp(esc, 'gi'), ' ');
+  n = n.replace(/\d{2,3}\s*\/\s*\d{6,}/g, (m) => {
+    const norm = (s) => s.replace(/\D/g, '');
+    return norm(m) === norm(p) ? ' ' : m;
+  });
+  return n.replace(/\s{2,}/g, ' ').replace(/^[,/|•\-\s]+|[,/|•\-\s]+$/g, '').trim();
+}
+
 function entryFromBuffer(buf, currentHotel, stayFrom, stayTo, defaultLocation) {
   const cap = guessCapacityFromStructure(buf.structure) ?? Math.max(buf.occupants.length, 1);
+  const rawNotes = [buf.agency].filter(Boolean).join(' ').trim();
   return {
     house_name: currentHotel,
     room_number: buf.roomNumber,
@@ -198,8 +220,9 @@ function entryFromBuffer(buf, currentHotel, stayFrom, stayTo, defaultLocation) {
     occupant_names: [...buf.occupants],
     number_of_persons: buf.occupants.length,
     capacity: cap,
-    notes: [buf.agency].filter(Boolean).join(' ').trim(),
+    notes: stripPhoneFromNotesText(rawNotes, buf.phone),
     contact_phone: buf.phone || '',
+    contract_number: buf.contract_number || '',
     bus_info: buf.bus_info || '',
     location: defaultLocation || null,
   };
@@ -303,6 +326,7 @@ export function parseAstraRoomingListLines(rawLines, defaultLocation) {
         phone,
         agency,
         bus_info,
+        contract_number: primary.contract_number || '',
       };
       continue;
     }

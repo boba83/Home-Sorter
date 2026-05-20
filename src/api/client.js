@@ -323,6 +323,24 @@ const info = {
   },
 };
 
+const excursions = {
+  list() {
+    return request('/excursions').then(asArray);
+  },
+  create(data) {
+    return request('/excursions', { method: 'POST', body: JSON.stringify(data) });
+  },
+  update(id, data) {
+    return request(`/excursions/${id}`, { method: 'PATCH', body: JSON.stringify(data) });
+  },
+  delete(id) {
+    return request(`/excursions/${id}`, { method: 'DELETE' });
+  },
+  meta() {
+    return request('/excursions/meta');
+  },
+};
+
 const notifications = {
   list(limit) {
     const q = limit ? `?limit=${limit}` : '';
@@ -360,6 +378,7 @@ export const api = {
   },
   invites,
   info,
+  excursions,
   notifications,
   houses: {
     setMembers(houseId, userIds) {
