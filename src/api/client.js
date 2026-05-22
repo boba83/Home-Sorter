@@ -380,6 +380,43 @@ export const api = {
   info,
   excursions,
   notifications,
+  dutyShifts: {
+    list(params) {
+      const qs = new URLSearchParams();
+      if (params?.from) qs.set('from', params.from);
+      if (params?.to) qs.set('to', params.to);
+      const q = qs.toString();
+      return request(`/duty-shifts${q ? `?${q}` : ''}`).then(asArray);
+    },
+    eligibleUsers() {
+      return request('/duty-shifts/eligible-users').then(asArray);
+    },
+    create(body) {
+      return request('/duty-shifts', { method: 'POST', body: JSON.stringify(body) });
+    },
+    update(id, body) {
+      return request(`/duty-shifts/${id}`, { method: 'PUT', body: JSON.stringify(body) });
+    },
+    delete(id) {
+      return request(`/duty-shifts/${id}`, { method: 'DELETE' });
+    },
+  },
+  excursionDuties: {
+    getByDate(date) {
+      return request(`/excursion-duties?date=${encodeURIComponent(date)}`).then((data) => ({
+        shifts: Array.isArray(data?.shifts) ? data.shifts : [],
+      }));
+    },
+    create(body) {
+      return request('/excursion-duties', { method: 'POST', body: JSON.stringify(body) });
+    },
+    update(id, body) {
+      return request(`/excursion-duties/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) });
+    },
+    delete(id) {
+      return request(`/excursion-duties/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    },
+  },
   houses: {
     setMembers(houseId, userIds) {
       return request(`/houses/${houseId}/members`, {

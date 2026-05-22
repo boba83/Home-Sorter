@@ -3,6 +3,7 @@ import ExcursionCalculator from './pages/ExcursionCalculator';
 import Landing from './pages/Landing';
 import ImportantInfo from './pages/ImportantInfo';
 import TaskManager from './pages/TaskManager';
+import DezurstvaPlanPage from './dezurstva/DezurstvaPlanPage';
 import Login from './pages/Login';
 import AcceptInvite from './pages/AcceptInvite';
 import { Toaster } from "@/components/ui/toaster"
@@ -68,6 +69,7 @@ const AuthenticatedApp = () => {
       <Route path="/Landing" element={<LayoutWrapper currentPageName="Landing"><Landing /></LayoutWrapper>} />
       <Route path="/ImportantInfo" element={<LayoutWrapper currentPageName="ImportantInfo"><ImportantInfo /></LayoutWrapper>} />
       <Route path="/TaskManager" element={<LayoutWrapper currentPageName="TaskManager"><TaskManager /></LayoutWrapper>} />
+      <Route path="/Dezurstva" element={<LayoutWrapper currentPageName="Dezurstva"><DezurstvaPlanPage /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

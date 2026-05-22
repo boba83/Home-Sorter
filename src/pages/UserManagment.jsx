@@ -132,6 +132,34 @@ export default function UserManagement() {
         return parts || user?.full_name || user?.email || '-';
     };
 
+    const houseRoomCount = (h) => Number(h?.total_rooms) || 0;
+
+    /** Pravilni oblik: 1 soba, 2–4 sobe (osim 12–14), inače soba */
+    const roomsWordSr = (n) => {
+        const x = Math.abs(Number(n)) || 0;
+        if (x === 1) return 'soba';
+        const mod10 = x % 10;
+        const mod100 = x % 100;
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 > 20)) return 'sobe';
+        return 'soba';
+    };
+
+    /** 1 kuća, 2–4 kuće (osim 12–14), inače kuća */
+    const housesWordSr = (n) => {
+        const x = Math.abs(Number(n)) || 0;
+        if (x === 1) return 'kuća';
+        const mod10 = x % 10;
+        const mod100 = x % 100;
+        if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 > 20)) return 'kuće';
+        return 'kuća';
+    };
+
+    const houseLabelWithRooms = (h) => {
+        const n = houseRoomCount(h);
+        const name = h?.name || '—';
+        return `${name} (${n} ${roomsWordSr(n)})`;
+    };
+
     const handleEditUser = (user) => {
         setSelectedUser(user);
         setAdminTempPassword('');
@@ -216,7 +244,7 @@ export default function UserManagement() {
                                             <TableHead>Email</TableHead>
                                             <TableHead>Prikazano kao</TableHead>
                                             <TableHead>Role</TableHead>
-                                            <TableHead>Assigned Houses</TableHead>
+                                            <TableHead>Broj dodela</TableHead>
                                             {isAdmin && <TableHead className="w-24">Actions</TableHead>}
                                         </TableRow>
                                     </TableHeader>
@@ -244,15 +272,11 @@ export default function UserManagement() {
                                                         </TableCell>
                                                         <TableCell>
                                                             {userHouses.length > 0 ? (
-                                                                <div className="flex flex-wrap gap-1">
-                                                                    {userHouses.map(h => (
-                                                                        <Badge key={h.id} variant="secondary" className="text-xs">
-                                                                            {h.name}
-                                                                        </Badge>
-                                                                    ))}
-                                                                </div>
+                                                                <span className="text-slate-600 text-sm tabular-nums">
+                                                                    {userHouses.length} {housesWordSr(userHouses.length)}
+                                                                </span>
                                                             ) : (
-                                                                <span className="text-slate-400">None</span>
+                                                                <span className="text-slate-400">—</span>
                                                             )}
                                                         </TableCell>
                                                         {isAdmin && (
@@ -294,6 +318,7 @@ export default function UserManagement() {
                             {(users || []).map(u => {
                                 const personHouses = getHousesByUserId(u.id);
                                 const label = userLabel(u);
+                                const roomsOnHouses = personHouses.reduce((sum, h) => sum + houseRoomCount(h), 0);
                                 return (
                                     <Card key={u.id} className="border-slate-200">
                                         <CardContent className="p-4">
@@ -303,14 +328,22 @@ export default function UserManagement() {
                                                 </div>
                                                 <div>
                                                     <h3 className="font-semibold text-slate-800">{label}</h3>
-                                                    <p className="text-sm text-slate-500">{personHouses.length} kuća</p>
+                                                    <p className="text-sm text-slate-500">
+                                                        {personHouses.length} kuća
+                                                        {personHouses.length > 0 && (
+                                                            <span className="text-slate-400">
+                                                                {' '}
+                                                                · {roomsOnHouses} {roomsWordSr(roomsOnHouses)}
+                                                            </span>
+                                                        )}
+                                                    </p>
                                                 </div>
                                             </div>
                                             {personHouses.length > 0 && (
                                                 <div className="flex flex-wrap gap-1">
                                                     {personHouses.map(h => (
                                                         <Badge key={h.id} variant="secondary" className="text-xs">
-                                                            {h.name}
+                                                            {houseLabelWithRooms(h)}
                                                         </Badge>
                                                     ))}
                                                 </div>
@@ -352,7 +385,10 @@ export default function UserManagement() {
                                                 <TableRow key={house.id}>
                                                     <TableCell className="font-medium">{house.name}</TableCell>
                                                     <TableCell className="text-slate-500">{house.address || '-'}</TableCell>
-                                                    <TableCell>{house.total_rooms || 0}</TableCell>
+                                                    <TableCell>
+                                                        <span className="font-medium tabular-nums">{house.total_rooms || 0}</span>
+                                                        <span className="text-slate-500 text-sm ml-1">{roomsWordSr(house.total_rooms || 0)}</span>
+                                                    </TableCell>
                                                     <TableCell>
                                                         {(house.member_user_ids || []).length > 0 ? (
                                                             <div className="flex flex-wrap gap-1">
@@ -398,7 +434,16 @@ export default function UserManagement() {
                         <DialogTitle>Dodela kuće korisnicima</DialogTitle>
                     </DialogHeader>
                     <div className="py-4">
-                        <Label>House: <span className="font-semibold">{selectedHouse?.name}</span></Label>
+                        <Label>
+                            Kuća:{' '}
+                            <span className="font-semibold">{selectedHouse?.name}</span>
+                            {selectedHouse != null && (
+                                <span className="text-slate-500 font-normal">
+                                    {' '}
+                                    ({houseRoomCount(selectedHouse)} {roomsWordSr(houseRoomCount(selectedHouse))})
+                                </span>
+                            )}
+                        </Label>
                         <div className="mt-4 space-y-2">
                             <Label>Korisnici na kući</Label>
                             <section className="max-h-48 overflow-y-auto space-y-1 border rounded-lg p-2 mt-2">

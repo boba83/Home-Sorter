@@ -1,13 +1,33 @@
 import { displayFullName } from './serialize.js';
 
+function normName(s) {
+  return String(s || '').trim().toLocaleLowerCase();
+}
+
+/** Ista logika kao na klijentu: odgovorna osoba vs ime korisnika. */
+function userMatchesResponsiblePerson(user, responsiblePerson) {
+  if (!user || !responsiblePerson?.trim()) return false;
+  const rp = normName(responsiblePerson);
+  const variants = new Set();
+  const dn = displayFullName(user);
+  if (dn) variants.add(normName(dn));
+  const fl = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  if (fl) variants.add(normName(fl));
+  if (user.fullName?.trim()) variants.add(normName(user.fullName));
+  for (const v of variants) {
+    if (v && v === rp) return true;
+  }
+  return false;
+}
+
 export const ROLES = ['admin', 'user', 'viewer'];
 
 export function isAdmin(role) {
-  return role === 'admin';
+  return String(role || '').toLowerCase() === 'admin';
 }
 
 export function isViewer(role) {
-  return role === 'viewer';
+  return String(role || '').toLowerCase() === 'viewer';
 }
 
 export function hasAllHousesAccess(role, canAccessAllHouses) {
@@ -45,7 +65,22 @@ export async function accessibleHouseIds(prisma, userId, role, canAccessAllHouse
     where: { userId },
     select: { houseId: true },
   });
-  return rows.map((r) => r.houseId);
+  const byMember = rows.map((r) => r.houseId);
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { fullName: true, firstName: true, lastName: true, email: true },
+  });
+
+  const withResponsible = await prisma.house.findMany({
+    where: { responsiblePerson: { not: null } },
+    select: { id: true, responsiblePerson: true },
+  });
+  const byResponsible = withResponsible
+    .filter((h) => userMatchesResponsiblePerson(user, h.responsiblePerson))
+    .map((h) => h.id);
+
+  return [...new Set([...byMember, ...byResponsible])];
 }
 
 export async function houseWhereForUser(prisma, userId, role, canAccessAllHouses = false) {
@@ -60,7 +95,17 @@ export async function canAccessHouse(prisma, userId, role, houseId, canAccessAll
   const member = await prisma.houseMember.findUnique({
     where: { houseId_userId: { houseId, userId } },
   });
-  return Boolean(member);
+  if (member) return true;
+  const house = await prisma.house.findUnique({
+    where: { id: houseId },
+    select: { responsiblePerson: true },
+  });
+  if (!house?.responsiblePerson?.trim()) return false;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { fullName: true, firstName: true, lastName: true, email: true },
+  });
+  return userMatchesResponsiblePerson(user, house.responsiblePerson);
 }
 
 export async function canEditHouse(prisma, userId, role, houseId, canAccessAllHouses = false) {
@@ -89,4 +134,36 @@ export async function setHouseMembers(prisma, houseId, userIds) {
       data: { responsiblePerson: null },
     });
   }
+}
+
+/** Korisnici za koje sme da se planira dežurstvo (članovi kuća koje korisnik vidi; admin / sve kuće → svi članovi). */
+export async function getDutyPoolUserIds(prisma, userId, role, canAccessAllHouses = false) {
+  if (isViewer(role)) return [];
+  if (isAdmin(role) || hasAllHousesAccess(role, canAccessAllHouses)) {
+    const rows = await prisma.houseMember.findMany({
+      distinct: ['userId'],
+      select: { userId: true },
+    });
+    const ids = new Set(rows.map((r) => r.userId));
+    if (ids.size === 0) {
+      const fallback = await prisma.user.findMany({
+        where: { role: { in: ['admin', 'user'] } },
+        select: { id: true },
+      });
+      return fallback.map((u) => u.id);
+    }
+    return [...ids];
+  }
+  const houseIds = await accessibleHouseIds(prisma, userId, role, canAccessAllHouses);
+  if (!houseIds?.length) {
+    return [userId];
+  }
+  const rows = await prisma.houseMember.findMany({
+    where: { houseId: { in: houseIds } },
+    distinct: ['userId'],
+    select: { userId: true },
+  });
+  const s = new Set(rows.map((r) => r.userId));
+  s.add(userId);
+  return [...s];
 }

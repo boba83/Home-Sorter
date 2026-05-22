@@ -22,6 +22,42 @@ model User {
   notifications Notification[]
   invitesSent   Invite[]       @relation("InvitesSent")
   houseMembers  HouseMember[]
+  dutyShifts     DutyShift[]
+  roomDutyShifts RoomDutyShift[]
+}
+
+/// Dežurstva za izdavanje soba (Aristotelis / Sartios / Ostraco) — više smena po danu i liniji, vreme 09:00–15:00.
+model RoomDutyShift {
+  id        String   @id @default(cuid())
+  date      String
+  slotKey   String
+  startTime String
+  endTime   String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note      String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([date, slotKey])
+}
+
+model DutyShift {
+  id          String   @id @default(cuid())
+  date        String
+  startTime   String
+  endTime     String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  note        String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@index([userId, date])
 }
 
 model Invite {

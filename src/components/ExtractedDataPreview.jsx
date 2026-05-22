@@ -84,7 +84,7 @@ export default function ExtractedDataPreview({ data, importLocation, onImportCom
                     <p className="text-sm text-slate-600">
                         Proverite da su <strong>sve kuće</strong> u listi i da imaju sobe (broj u zagradi).
                         Crveno = kuća je u PDF-u ali <strong>nijedna soba nije prepoznata</strong> (npr. pogrešan format sobe).
-                        Sobe tipa <strong>A1</strong>, <strong>B3</strong> i gosti preko više strana sada se prepoznaju.
+                        Sobe tipa <strong>A1</strong>, <strong>B3</strong>, <strong>UL9</strong> (više slova + broj) i gosti preko više strana sada se prepoznaju. Podržan je i naslov <strong>House:</strong> kao kod <strong>Hotel:</strong>.
                     </p>
                     {missingRoomsFiltered.length > 0 && (
                         <p className="text-sm font-medium text-red-700">

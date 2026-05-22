@@ -1,9 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Building2, Calculator, Info, LayoutDashboard } from 'lucide-react';
+import { Building2, Calculator, Info, LayoutDashboard, CalendarClock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import UserProfileButton from '@/components/UserProfileButton';
 import NotificationBell from '@/components/NotificationBell';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { createPageUrl } from '@/utils';
 
 const apps = [
     {
@@ -34,13 +36,13 @@ const apps = [
         bg: 'bg-sky-50',
     },
     {
-        to: '/ImportantInfo',
-        icon: Info,
-        label: 'Bitne Informacije',
-        description: 'Kontakti i važne informacije',
-        gradient: 'from-orange-500 to-orange-600',
-        shadow: 'shadow-orange-500/30',
-        bg: 'bg-orange-50',
+        to: '/Dezurstva',
+        icon: CalendarClock,
+        label: 'Dežurstva',
+        description: 'Plan smena po danima za tim na kućama',
+        gradient: 'from-violet-500 to-violet-700',
+        shadow: 'shadow-violet-500/30',
+        bg: 'bg-violet-50',
     },
 ];
 
@@ -61,36 +63,66 @@ export default function Landing() {
                 <p className="text-slate-500">Odaberite aplikaciju</p>
             </motion.div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-lg items-stretch">
-                {apps.map((app, i) => {
+            <Tabs defaultValue="apps" className="w-full max-w-3xl mx-auto">
+              <TabsList className="grid w-full max-w-xs mx-auto grid-cols-2 mb-8">
+                <TabsTrigger value="apps">Aplikacije</TabsTrigger>
+                <TabsTrigger value="ostalo">Ostalo</TabsTrigger>
+              </TabsList>
+              <TabsContent value="apps" className="mt-0 outline-none">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full items-stretch">
+                  {apps.map((app, i) => {
                     const Icon = app.icon;
                     return (
-                        <motion.div
-                            key={app.to}
-                            className="h-full"
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.1 }}
-                        >
-                            <Link to={app.to} className="block h-full">
-                                <div
-                                    className={`${app.bg} border border-slate-200 rounded-xl p-5 h-full flex flex-col items-center gap-3 hover:shadow-lg transition-all duration-300 cursor-pointer group hover:-translate-y-0.5`}
-                                >
-                                    <div
-                                        className={`w-14 h-14 shrink-0 rounded-xl bg-gradient-to-br ${app.gradient} shadow-md ${app.shadow} flex items-center justify-center group-hover:scale-105 transition-transform duration-300`}
-                                    >
-                                        <Icon className="w-7 h-7 text-white" />
-                                    </div>
-                                    <div className="text-center w-full min-h-[3.25rem] flex flex-col items-center justify-center">
-                                        <h2 className="text-base font-bold text-slate-800 leading-snug">{app.label}</h2>
-                                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{app.description}</p>
-                                    </div>
-                                </div>
-                            </Link>
-                        </motion.div>
+                      <motion.div
+                        key={app.to}
+                        className="h-full"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.1 }}
+                      >
+                        <Link to={app.to} className="block h-full">
+                          <div
+                            className={`${app.bg} border border-slate-200 rounded-xl p-5 h-full flex flex-col items-center gap-3 hover:shadow-lg transition-all duration-300 cursor-pointer group hover:-translate-y-0.5`}
+                          >
+                            <div
+                              className={`w-14 h-14 shrink-0 rounded-xl bg-gradient-to-br ${app.gradient} shadow-md ${app.shadow} flex items-center justify-center group-hover:scale-105 transition-transform duration-300`}
+                            >
+                              <Icon className="w-7 h-7 text-white" />
+                            </div>
+                            <div className="text-center w-full min-h-[3.25rem] flex flex-col items-center justify-center">
+                              <h2 className="text-base font-bold text-slate-800 leading-snug">{app.label}</h2>
+                              <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{app.description}</p>
+                            </div>
+                          </div>
+                        </Link>
+                      </motion.div>
                     );
-                })}
-            </div>
+                  })}
+                </div>
+              </TabsContent>
+              <TabsContent value="ostalo" className="mt-0 outline-none">
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mx-auto w-full max-w-md"
+                >
+                  <p className="text-center text-sm text-slate-500 mb-4">
+                    Ostali resursi i informacije za tim.
+                  </p>
+                  <Link to={createPageUrl('ImportantInfo')} className="block">
+                    <div className="bg-orange-50 border border-slate-200 rounded-xl p-5 flex flex-col items-center gap-3 hover:shadow-lg transition-all duration-300 cursor-pointer group hover:-translate-y-0.5">
+                      <div className="w-14 h-14 shrink-0 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-md shadow-orange-500/30 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                        <Info className="w-7 h-7 text-white" />
+                      </div>
+                      <div className="text-center w-full">
+                        <h2 className="text-base font-bold text-slate-800 leading-snug">Bitne informacije</h2>
+                        <p className="text-xs text-slate-500 mt-0.5">Kontakti i važne informacije</p>
+                      </div>
+                    </div>
+                  </Link>
+                </motion.div>
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
     );

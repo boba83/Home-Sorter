@@ -64,14 +64,14 @@ export default function HouseDetails() {
     const { data: assignableUsers = [] } = useQuery({
         queryKey: ['assignableUsers'],
         queryFn: () => base44.entities.User.assignable(),
-        enabled: Boolean(currentUser?.can_access_all_houses || currentUser?.role === 'admin'),
+        enabled: Boolean(currentUser?.can_access_all_houses || String(currentUser?.role || '').toLowerCase() === 'admin'),
     });
 
     const filterUser = filterUserId
         ? (assignableUsers || []).find((u) => u.id === filterUserId)
         : null;
 
-    const isAdmin = currentUser?.role === 'admin';
+    const isAdmin = String(currentUser?.role || '').toLowerCase() === 'admin';
     const isUser = currentUser?.role === 'user';
     const canAccessAllHouses = Boolean(currentUser?.can_access_all_houses);
     const memberIds = house?.member_user_ids || [];

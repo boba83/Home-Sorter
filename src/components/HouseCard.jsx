@@ -9,6 +9,10 @@ export default function HouseCard({ house, rooms = [], userColor = 'slate', deta
 
     const safeRooms = Array.isArray(rooms) ? rooms : [];
     const houseName = (house?.name ?? 'Bez naziva').toString();
+    const listedRoomCount = safeRooms.length;
+    const houseTotalRooms = Number(house?.total_rooms) || 0;
+    /** Ako API sobe nisu učitane, koristi agregat sa kuće (iz importa) da ne bude 0/0. */
+    const totalRoomsForDisplay = Math.max(listedRoomCount, houseTotalRooms);
     const occupiedRooms = safeRooms.filter((r) => (r.current_occupants || 0) > 0).length;
     const totalOccupants = safeRooms.reduce((sum, r) => sum + (r.current_occupants || 0), 0);
 
@@ -61,7 +65,7 @@ export default function HouseCard({ house, rooms = [], userColor = 'slate', deta
                                 <DoorOpen className="w-4 h-4 text-slate-400" />
                                 <span className="text-sm">
                                     <span className="font-semibold text-slate-700">{occupiedRooms}</span>
-                                    <span className="text-slate-400">/{safeRooms.length}</span>
+                                    <span className="text-slate-400">/{totalRoomsForDisplay}</span>
                                     <span className="text-slate-500 ml-1">rooms</span>
                                 </span>
                             </div>

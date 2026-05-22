@@ -290,3 +290,105 @@ export function excursionFromBody(body) {
   if (body.active !== undefined) data.active = Boolean(body.active);
   return data;
 }
+
+const DUTY_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function normalizeDutyTimeHm(s) {
+  const m = String(s ?? '').trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  let min = parseInt(m[2], 10);
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
+  h = Math.min(23, Math.max(0, h));
+  min = Math.min(59, Math.max(0, min));
+  return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+export function dutyTimeToMinutes(hm) {
+  const n = normalizeDutyTimeHm(hm);
+  if (!n) return null;
+  const [h, min] = n.split(':').map((x) => parseInt(x, 10));
+  return h * 60 + min;
+}
+
+export function serializeDutyShift(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    start_time: row.startTime,
+    end_time: row.endTime,
+    user_id: row.userId,
+    note: row.note ?? '',
+    created_by: row.createdBy ?? null,
+    created_date: row.createdAt?.toISOString?.() ?? row.createdAt,
+    updated_date: row.updatedAt?.toISOString?.() ?? row.updatedAt,
+    user: row.user ? serializeUser(row.user) : undefined,
+  };
+}
+
+export function dutyShiftFromBody(body) {
+  const date = String(body?.date ?? '').trim();
+  const startTime = normalizeDutyTimeHm(body?.start_time ?? body?.startTime ?? '');
+  const endTime = normalizeDutyTimeHm(body?.end_time ?? body?.endTime ?? '');
+  const userId = String(body?.user_id ?? body?.userId ?? '').trim();
+  const rawNote = body?.note != null ? String(body.note).trim().slice(0, 500) : '';
+  const note = rawNote.length ? rawNote : null;
+  return { date, startTime, endTime, userId, note };
+}
+
+export function validateDutyShiftPayload(data) {
+  if (!DUTY_DATE_RE.test(data.date)) return 'Neispravan datum (očekuje se YYYY-MM-DD)';
+  if (!data.userId) return 'Izaberite korisnika';
+  if (!data.startTime || !data.endTime) return 'Unesite vreme početka i kraja (HH:mm)';
+  const a = dutyTimeToMinutes(data.startTime);
+  const b = dutyTimeToMinutes(data.endTime);
+  if (a === null || b === null) return 'Neispravan format vremena';
+  if (b <= a) return 'Kraj mora biti posle početka (isti dan)';
+  return null;
+}
+
+const ROOM_DUTY_SLOT_KEYS = new Set(['aristotelis', 'sartios', 'ostraco']);
+const ROOM_DUTY_MIN_M = 9 * 60;
+const ROOM_DUTY_MAX_M = 15 * 60;
+
+export function serializeRoomDutyShift(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    slot_key: row.slotKey,
+    start_time: row.startTime,
+    end_time: row.endTime,
+    user_id: row.userId,
+    note: row.note ?? '',
+    created_by: row.createdBy ?? null,
+    created_date: row.createdAt?.toISOString?.() ?? row.createdAt,
+    updated_date: row.updatedAt?.toISOString?.() ?? row.updatedAt,
+    user: row.user ? serializeUser(row.user) : undefined,
+  };
+}
+
+export function roomDutyShiftFromBody(body) {
+  const date = String(body?.date ?? '').trim();
+  const slotKey = String(body?.slot_key ?? body?.slotKey ?? '').toLowerCase();
+  const startTime = normalizeDutyTimeHm(body?.start_time ?? body?.startTime ?? '');
+  const endTime = normalizeDutyTimeHm(body?.end_time ?? body?.endTime ?? '');
+  const userId = String(body?.user_id ?? body?.userId ?? '').trim();
+  const rawNote = body?.note != null ? String(body.note).trim().slice(0, 500) : '';
+  const note = rawNote.length ? rawNote : null;
+  return { date, slotKey, startTime, endTime, userId, note };
+}
+
+export function validateRoomDutyShiftPayload(data) {
+  if (!DUTY_DATE_RE.test(data.date)) return 'Neispravan datum (očekuje se YYYY-MM-DD)';
+  if (!ROOM_DUTY_SLOT_KEYS.has(data.slotKey)) return 'Nepoznata linija (slot)';
+  if (!data.userId) return 'Izaberite korisnika';
+  if (!data.startTime || !data.endTime) return 'Unesite vreme početka i kraja (HH:mm)';
+  const a = dutyTimeToMinutes(data.startTime);
+  const b = dutyTimeToMinutes(data.endTime);
+  if (a === null || b === null) return 'Neispravan format vremena';
+  if (b <= a) return 'Kraj mora biti posle početka';
+  if (a < ROOM_DUTY_MIN_M || b > ROOM_DUTY_MAX_M) {
+    return 'Za izdavanje soba dozvoljeno je samo od 09:00 do 15:00';
+  }
+  return null;
+}

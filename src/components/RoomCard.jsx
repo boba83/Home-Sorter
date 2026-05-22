@@ -11,6 +11,7 @@ import { DoorOpen, Users, Edit2, Trash2, Plus, X, Loader2, Sailboat, UserCheck, 
 import { base44 } from '@/api/base44Client';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
+import { computeStructureAndNotesBlock, structureLooksInformative } from '@/lib/roomingDisplay';
 
 function normalizeNames(raw) {
     if (Array.isArray(raw)) return raw.filter(Boolean);
@@ -23,20 +24,6 @@ function normalizeNames(raw) {
         }
     }
     return [];
-}
-
-/** Uklanja dupli telefon iz napomene ako je isti kao contact_phone (PDF ponekad duplira). */
-function stripPhoneFromNotesText(notes, phone) {
-    if (!notes?.trim() || !phone?.trim()) return (notes || '').trim();
-    let n = notes.trim();
-    const p = phone.trim();
-    const esc = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    n = n.replace(new RegExp(esc, 'gi'), ' ');
-    n = n.replace(/\d{2,3}\s*\/\s*\d{6,}/g, (m) => {
-        const norm = (s) => s.replace(/\D/g, '');
-        return norm(m) === norm(p) ? ' ' : m;
-    });
-    return n.replace(/\s{2,}/g, ' ').replace(/^[,/|•\-\s]+|[,/|•\-\s]+$/g, '').trim();
 }
 
 function formatStayDate(value) {
@@ -91,10 +78,12 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
         return [{ text: visitStr, timestamp: null }];
     };
 
-    const notesDisplay = useMemo(
-        () => stripPhoneFromNotesText(room.notes, room.contact_phone),
-        [room.notes, room.contact_phone]
+    const { structureDisplay, notesBlock } = useMemo(
+        () => computeStructureAndNotesBlock(room.room_structure, room.notes, room.contact_phone),
+        [room.room_structure, room.notes, room.contact_phone]
     );
+
+    const visitHistory = parseVisitHistory(room.visit);
 
     const [newOccupant, setNewOccupant] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -201,7 +190,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ duration: 0.2 }}
             >
-                <Card className="group hover:shadow-md transition-shadow border border-slate-200/90 bg-white rounded-xl relative overflow-hidden shadow-sm h-full min-h-[30rem] flex flex-col">
+                <Card className="group hover:shadow-md transition-shadow border border-slate-200/90 bg-white rounded-xl relative overflow-hidden shadow-sm h-full min-h-[26rem] flex flex-col max-w-md mx-auto w-full">
                     <CardContent className="p-4 sm:p-5 flex flex-col flex-1 min-h-0">
                         {/* Header — broj sobe, struktura, telefon, broj ugovora, TAX + akcije */}
                         <motion.div className="flex items-start justify-between gap-3 mb-3 shrink-0">
@@ -217,9 +206,9 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                     <h4 className="font-bold text-slate-900 text-base leading-tight tracking-tight">
                                         Room {room.room_number}
                                     </h4>
-                                    {room.room_structure ? (
+                                    {structureLooksInformative(structureDisplay) ? (
                                         <p className="text-sm mt-0.5 leading-snug text-slate-600">
-                                            {room.room_structure}
+                                            {structureDisplay}
                                         </p>
                                     ) : null}
                                     {room.contact_phone ? (
@@ -229,8 +218,8 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                         </p>
                                     ) : null}
                                     {room.contract_number ? (
-                                        <p className="text-xs mt-1 font-semibold tabular-nums text-blue-600 tracking-tight">
-                                            Broj ugovora: {room.contract_number}
+                                        <p className="text-sm mt-1.5 font-semibold tabular-nums text-blue-600 tracking-wide">
+                                            {room.contract_number}
                                         </p>
                                     ) : null}
                                 </motion.div>
@@ -336,6 +325,16 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                             </motion.div>
                         )}
 
+                        {/* Agencija / napomene (ispod kalendara, iz PDF-a posle BUS PAK / AUTOBUS) */}
+                        {notesBlock ? (
+                            <motion.div className="flex items-start gap-2.5 rounded-xl border border-slate-200/90 bg-slate-50/90 px-3 py-2.5 shadow-sm">
+                                <FileText className="w-4 h-4 flex-shrink-0 text-slate-500 mt-0.5" />
+                                <span className="text-sm font-medium text-slate-700 leading-snug">
+                                    {notesBlock}
+                                </span>
+                            </motion.div>
+                        ) : null}
+
                         {/* Visit record */}
                         {visitHistory.length > 0 && (
                             <motion.div className="bg-amber-50 border border-amber-200/90 rounded-xl px-3 py-2.5 shadow-sm">
@@ -374,9 +373,9 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                             </motion.div>
                         )}
 
-                        {/* Ekskurzija */}
+                        {/* Ekskurzija — poslednji blok ispod visit-a */}
                         {room.excursion && (
-                            <motion.div className="flex items-start gap-2.5 text-sm">
+                            <motion.div className="flex items-start gap-2.5 text-sm rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5">
                                 <span className="w-5 h-5 rounded-md flex items-center justify-center bg-blue-500 flex-shrink-0 shadow-sm">
                                     <Sailboat className="w-3 h-3 text-white" />
                                 </span>
@@ -387,16 +386,6 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                             </motion.div>
                         )}
                         </div>
-
-                        {/* Napomena / agencija — bez duplog telefona (telefon je gore) */}
-                        {notesDisplay ? (
-                            <motion.div className="flex items-start gap-2.5 pt-3 mt-auto border-t border-slate-100 shrink-0">
-                                <FileText className="w-3.5 h-3.5 flex-shrink-0 text-slate-500 mt-0.5" />
-                                <span className="text-xs font-semibold text-slate-700 leading-relaxed tracking-wide uppercase">
-                                    {notesDisplay}
-                                </span>
-                            </motion.div>
-                        ) : null}
                     </CardContent>
 
                     {room.bus && (

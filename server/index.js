@@ -25,6 +25,13 @@ import {
   serializeExcursion,
   excursionFromBody,
   displayFullName,
+  serializeDutyShift,
+  dutyShiftFromBody,
+  validateDutyShiftPayload,
+  serializeRoomDutyShift,
+  roomDutyShiftFromBody,
+  validateRoomDutyShiftPayload,
+  normalizeDutyTimeHm,
 } from './lib/serialize.js';
 import {
   EXCURSION_THEMES,
@@ -52,6 +59,7 @@ import {
   canAccessHouse,
   canEditHouse,
   setHouseMembers,
+  getDutyPoolUserIds,
 } from './lib/access.js';
 import { serializeInfoFolder, serializeInfoFile } from './lib/serializeInfo.js';
 import { saveInfoFile, removeStoredFile, resolveStoredPath } from './lib/infoStorage.js';
@@ -244,7 +252,18 @@ app.get('/api/houses', authMiddleware, async (req, res) => {
     req.userCanAccessAllHouses,
   );
   const where = { ...scope };
-  if (req.query.id) where.id = req.query.id;
+  if (req.query.id) {
+    const requestedId = String(req.query.id);
+    if (where.id === '__no_access__') {
+      return res.json([]);
+    }
+    if (where.id && typeof where.id === 'object' && Array.isArray(where.id.in)) {
+      if (!where.id.in.includes(requestedId)) {
+        return res.json([]);
+      }
+    }
+    where.id = requestedId;
+  }
   if (req.query.location) where.location = req.query.location;
   const houses = await prisma.house.findMany({
     where,
@@ -355,16 +374,18 @@ app.get('/api/rooms', authMiddleware, async (req, res) => {
   if (req.query.house_id) where.houseId = req.query.house_id;
   if (req.query.id) where.id = req.query.id;
   if (!hasAllHousesAccess(req.userRole, req.userCanAccessAllHouses)) {
-    const houseIds = await accessibleHouseIds(
+    const houseIdsRaw = await accessibleHouseIds(
       prisma,
       req.userId,
       req.userRole,
       req.userCanAccessAllHouses,
     );
-    if (!houseIds?.length) return res.json([]);
-    where.houseId = req.query.house_id
-      ? houseIds.includes(req.query.house_id)
-        ? req.query.house_id
+    const houseIds = Array.isArray(houseIdsRaw) ? houseIdsRaw.filter(Boolean) : [];
+    if (houseIds.length === 0) return res.json([]);
+    const qHouse = req.query.house_id != null ? String(req.query.house_id) : '';
+    where.houseId = qHouse
+      ? houseIds.some((id) => String(id) === qHouse)
+        ? qHouse
         : '__none__'
       : { in: houseIds };
   }
@@ -883,6 +904,14 @@ app.post('/api/import/commit', authMiddleware, editorOnly, async (req, res) => {
     });
   } catch (e) {
     console.error(e);
+    const raw = String(e?.message || e || '');
+    if (/no such column|does not exist|Unknown arg|contractNumber/i.test(raw)) {
+      return res.status(500).json({
+        message:
+          'Baza podataka nije usklađena sa šemom (npr. nedostaje kolona contractNumber). ' +
+          'U terminalu u folderu server pokrenite: npx prisma db push — zatim restartujte API.',
+      });
+    }
     res.status(500).json({
       message: e.message || 'Import nije uspeo. Proverite podatke ili pokušajte ponovo.',
     });
@@ -1281,6 +1310,208 @@ app.delete('/api/excursions/:id', authMiddleware, adminOnly, async (req, res) =>
 
 app.get('/api/excursions/meta', authMiddleware, adminOnly, (_req, res) => {
   res.json({ themes: EXCURSION_THEMES, icons: ['boat', 'bus'] });
+});
+
+const ROOM_DUTY_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+app.get('/api/excursion-duties', authMiddleware, async (req, res) => {
+  const date = String(req.query.date || '').trim();
+  if (!ROOM_DUTY_DATE_RE.test(date)) {
+    return res.status(400).json({ message: 'Parametar date (YYYY-MM-DD)' });
+  }
+  const pool = await getDutyPoolUserIds(prisma, req.userId, req.userRole, req.userCanAccessAllHouses);
+  if (isViewer(req.userRole) || !pool.length) {
+    return res.json({ shifts: [] });
+  }
+  const rows = await prisma.roomDutyShift.findMany({
+    where: { date, userId: { in: pool } },
+    orderBy: [{ slotKey: 'asc' }, { startTime: 'asc' }],
+    include: { user: { select: userAuthSelect } },
+  });
+  res.json({ shifts: rows.map((r) => serializeRoomDutyShift(r)) });
+});
+
+app.post('/api/excursion-duties', authMiddleware, async (req, res) => {
+  if (isViewer(req.userRole)) {
+    return res.status(403).json({ message: 'Pregledač ne može da menja' });
+  }
+  const body = roomDutyShiftFromBody(req.body);
+  const vmsg = validateRoomDutyShiftPayload(body);
+  if (vmsg) return res.status(400).json({ message: vmsg });
+  const pool = await getDutyPoolUserIds(prisma, req.userId, req.userRole, req.userCanAccessAllHouses);
+  if (!pool.includes(body.userId)) {
+    return res.status(403).json({ message: 'Nemate pravo dodele za izabranog korisnika' });
+  }
+  const row = await prisma.roomDutyShift.create({
+    data: {
+      date: body.date,
+      slotKey: body.slotKey,
+      startTime: body.startTime,
+      endTime: body.endTime,
+      userId: body.userId,
+      note: body.note,
+      createdBy: req.userId,
+    },
+    include: { user: { select: userAuthSelect } },
+  });
+  res.status(201).json(serializeRoomDutyShift(row));
+});
+
+app.put('/api/excursion-duties/:id', authMiddleware, async (req, res) => {
+  if (isViewer(req.userRole)) {
+    return res.status(403).json({ message: 'Pregledač ne može da menja' });
+  }
+  const existing = await prisma.roomDutyShift.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ message: 'Zapis nije pronađen' });
+  const merged = roomDutyShiftFromBody({
+    date: req.body.date ?? existing.date,
+    slot_key: req.body.slot_key ?? req.body.slotKey ?? existing.slotKey,
+    start_time: req.body.start_time ?? req.body.startTime ?? existing.startTime,
+    end_time: req.body.end_time ?? req.body.endTime ?? existing.endTime,
+    user_id: req.body.user_id ?? req.body.userId ?? existing.userId,
+    note: req.body.note !== undefined ? req.body.note : existing.note,
+  });
+  const vmsg = validateRoomDutyShiftPayload(merged);
+  if (vmsg) return res.status(400).json({ message: vmsg });
+  const pool = await getDutyPoolUserIds(prisma, req.userId, req.userRole, req.userCanAccessAllHouses);
+  if (!pool.includes(existing.userId) || !pool.includes(merged.userId)) {
+    return res.status(403).json({ message: 'Nemate pravo izmene ovog zapisa' });
+  }
+  const row = await prisma.roomDutyShift.update({
+    where: { id: existing.id },
+    data: {
+      date: merged.date,
+      slotKey: merged.slotKey,
+      startTime: merged.startTime,
+      endTime: merged.endTime,
+      userId: merged.userId,
+      note: merged.note,
+    },
+    include: { user: { select: userAuthSelect } },
+  });
+  res.json(serializeRoomDutyShift(row));
+});
+
+app.delete('/api/excursion-duties/:id', authMiddleware, async (req, res) => {
+  if (isViewer(req.userRole)) {
+    return res.status(403).json({ message: 'Pregledač ne može da briše' });
+  }
+  const existing = await prisma.roomDutyShift.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ message: 'Zapis nije pronađen' });
+  const pool = await getDutyPoolUserIds(prisma, req.userId, req.userRole, req.userCanAccessAllHouses);
+  if (!pool.includes(existing.userId)) {
+    return res.status(403).json({ message: 'Nemate pravo brisanja' });
+  }
+  await prisma.roomDutyShift.delete({ where: { id: existing.id } });
+  res.status(204).end();
+});
+
+const DUTY_SHIFT_RANGE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+app.get('/api/duty-shifts/eligible-users', authMiddleware, async (req, res) => {
+  const pool = await getDutyPoolUserIds(prisma, req.userId, req.userRole, req.userCanAccessAllHouses);
+  if (isViewer(req.userRole) || !pool.length) {
+    return res.json([]);
+  }
+  const users = await prisma.user.findMany({
+    where: { id: { in: pool } },
+    orderBy: { fullName: 'asc' },
+    select: userAuthSelect,
+  });
+  res.json(users.map((u) => serializeUser(u)));
+});
+
+app.get('/api/duty-shifts', authMiddleware, async (req, res) => {
+  const from = String(req.query.from || '').trim();
+  const to = String(req.query.to || '').trim();
+  if (!DUTY_SHIFT_RANGE_RE.test(from) || !DUTY_SHIFT_RANGE_RE.test(to)) {
+    return res.status(400).json({ message: 'Parametri from i to (YYYY-MM-DD) su obavezni' });
+  }
+  const pool = await getDutyPoolUserIds(prisma, req.userId, req.userRole, req.userCanAccessAllHouses);
+  if (isViewer(req.userRole) || !pool.length) {
+    return res.json([]);
+  }
+  const shifts = await prisma.dutyShift.findMany({
+    where: {
+      date: { gte: from, lte: to },
+      userId: { in: pool },
+    },
+    orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
+    include: { user: { select: userAuthSelect } },
+  });
+  res.json(shifts.map((row) => serializeDutyShift(row)));
+});
+
+app.post('/api/duty-shifts', authMiddleware, async (req, res) => {
+  if (isViewer(req.userRole)) {
+    return res.status(403).json({ message: 'Pregledač ne može da menja raspored' });
+  }
+  const body = dutyShiftFromBody(req.body);
+  const vmsg = validateDutyShiftPayload(body);
+  if (vmsg) return res.status(400).json({ message: vmsg });
+  const pool = await getDutyPoolUserIds(prisma, req.userId, req.userRole, req.userCanAccessAllHouses);
+  if (!pool.includes(body.userId)) {
+    return res.status(403).json({ message: 'Nemate pravo dodele za izabranog korisnika' });
+  }
+  const row = await prisma.dutyShift.create({
+    data: {
+      date: body.date,
+      startTime: body.startTime,
+      endTime: body.endTime,
+      userId: body.userId,
+      note: body.note,
+      createdBy: req.userId,
+    },
+    include: { user: { select: userAuthSelect } },
+  });
+  res.status(201).json(serializeDutyShift(row));
+});
+
+app.put('/api/duty-shifts/:id', authMiddleware, async (req, res) => {
+  if (isViewer(req.userRole)) {
+    return res.status(403).json({ message: 'Pregledač ne može da menja raspored' });
+  }
+  const existing = await prisma.dutyShift.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ message: 'Zapis nije pronađen' });
+  const merged = dutyShiftFromBody({
+    date: req.body.date ?? existing.date,
+    start_time: req.body.start_time ?? req.body.startTime ?? existing.startTime,
+    end_time: req.body.end_time ?? req.body.endTime ?? existing.endTime,
+    user_id: req.body.user_id ?? req.body.userId ?? existing.userId,
+    note: req.body.note !== undefined ? req.body.note : existing.note,
+  });
+  const vmsg = validateDutyShiftPayload(merged);
+  if (vmsg) return res.status(400).json({ message: vmsg });
+  const pool = await getDutyPoolUserIds(prisma, req.userId, req.userRole, req.userCanAccessAllHouses);
+  if (!pool.includes(existing.userId) || !pool.includes(merged.userId)) {
+    return res.status(403).json({ message: 'Nemate pravo izmene ovog zapisa' });
+  }
+  const row = await prisma.dutyShift.update({
+    where: { id: existing.id },
+    data: {
+      date: merged.date,
+      startTime: merged.startTime,
+      endTime: merged.endTime,
+      userId: merged.userId,
+      note: merged.note,
+    },
+    include: { user: { select: userAuthSelect } },
+  });
+  res.json(serializeDutyShift(row));
+});
+
+app.delete('/api/duty-shifts/:id', authMiddleware, async (req, res) => {
+  if (isViewer(req.userRole)) {
+    return res.status(403).json({ message: 'Pregledač ne može da briše raspored' });
+  }
+  const existing = await prisma.dutyShift.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ message: 'Zapis nije pronađen' });
+  const pool = await getDutyPoolUserIds(prisma, req.userId, req.userRole, req.userCanAccessAllHouses);
+  if (!pool.includes(existing.userId)) {
+    return res.status(403).json({ message: 'Nemate pravo brisanja' });
+  }
+  await prisma.dutyShift.delete({ where: { id: existing.id } });
+  res.status(204).end();
 });
 
 app.use((err, req, res, _next) => {

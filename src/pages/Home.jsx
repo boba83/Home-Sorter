@@ -73,7 +73,7 @@ export default function Home() {
         queryFn: () => base44.auth.me(),
     });
 
-    const isAdmin = currentUser?.role === 'admin';
+    const isAdmin = String(currentUser?.role || '').toLowerCase() === 'admin';
     const isViewer = currentUser?.role === 'viewer';
     const canManageHouses = !isViewer;
     const canAccessAllHouses = Boolean(currentUser?.can_access_all_houses);
@@ -126,7 +126,12 @@ export default function Home() {
     };
 
     const getRoomsForHouse = (houseId) => {
-        return roomList.filter((room) => room.house_id === houseId);
+        const hid = houseId == null ? '' : String(houseId);
+        return roomList.filter((room) => {
+            const rid = room?.house_id ?? room?.houseId;
+            if (rid == null) return false;
+            return String(rid) === hid;
+        });
     };
 
     const openAddHouseDialog = () => {

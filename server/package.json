@@ -6,7 +6,8 @@
     "dev": "node --watch index.js",
     "db:push": "prisma db push",
     "db:seed": "node seed.js",
-    "setup": "prisma generate && prisma db push && node seed.js"
+    "setup": "prisma generate && prisma db push && node seed.js",
+    "dev:setup": "npm run setup"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

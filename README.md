@@ -58,9 +58,13 @@ Posle ažuriranja Prisma šeme ili prvog kloniranja, jednom:
 npm run dev:setup
 ```
 
+(Isto iz foldera `server`: `npm run dev:setup` ili `npm run setup` — oba rade `prisma generate`, `db push` i seed.)
+
 ## PDF import
 
 PDF se šalje na **vaš server** (`/api/import/pdf`). Parsiranje je osnovno (tekst iz PDF-a), ne Base44 AI. Za složene PDF-ove možda treba ručno dopuniti podatke posle uvoza.
+
+Ako **import u bazu** prijavi grešku posle `git pull` (npr. nova polja u šemi), u folderu `server` pokrenite **`npm run dev:setup`** (ili samo **`npm run db:push`** ako ne želite ponovni seed), zatim restartujte API (`npm run dev:server` ili `npm run dev:all`). Iz korena projekta može i **`npm run dev:setup`**.
 
 ## Produkcija kasnije
 
