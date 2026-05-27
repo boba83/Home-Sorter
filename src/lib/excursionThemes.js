@@ -61,3 +61,6 @@ export function withExcursionStyles(excursion) {
   const styles = EXCURSION_THEME_STYLES[excursion.theme] || EXCURSION_THEME_STYLES.cyan;
   return { ...excursion, ...styles };
 }
+
+/** Vrednosti ikone usklađene sa serverom (`normalizeExcursionIcon`). */
+export const EXCURSION_ICON_KEYS = ['boat', 'bus', 'minibus'];

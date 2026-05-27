@@ -8,8 +8,8 @@ import {
     Calculator,
     Sailboat,
     Bus,
+    Car,
     Pencil,
-    Settings2,
     Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,11 +25,27 @@ import {
 import { api } from '@/api/client';
 import { useAuth } from '@/lib/AuthContext';
 import { withExcursionStyles, EXCURSION_THEME_STYLES } from '@/lib/excursionThemes';
+import { useToast } from '@/components/ui/use-toast';
 
 const emptyRow = () => ({ excursion: '', adl: '', chd: '' });
 
-const ExcursionIcon = ({ icon, className }) =>
-    icon === 'bus' ? <Bus className={className} /> : <Sailboat className={className} />;
+const EXCURSION_ICON_OPTIONS = [
+    { key: 'boat', label: 'Brod', emoji: '⛵' },
+    { key: 'bus', label: 'Autobus', emoji: '🚌' },
+    { key: 'minibus', label: 'Kombi / mini bus', emoji: '🚐' },
+];
+
+const ExcursionIcon = ({ icon, className }) => {
+    if (icon === 'bus') return <Bus className={className} />;
+    if (icon === 'minibus') return <Car className={className} />;
+    return <Sailboat className={className} />;
+};
+
+function excursionTypeLabel(icon) {
+    if (icon === 'bus') return 'Autobus';
+    if (icon === 'minibus') return 'Kombi / mini bus';
+    return 'Brodska ekskurzija';
+}
 
 const emptyForm = () => ({
     name: '',
@@ -41,7 +57,8 @@ const emptyForm = () => ({
 
 export default function ExcursionCalculator() {
     const { user } = useAuth();
-    const isAdmin = user?.role === 'admin';
+    const { toast } = useToast();
+    const isAdmin = String(user?.role || '').toLowerCase() === 'admin';
     const queryClient = useQueryClient();
     const [rows, setRows] = useState([emptyRow()]);
     const [adminOpen, setAdminOpen] = useState(false);
@@ -65,10 +82,23 @@ export default function ExcursionCalculator() {
             }
             return api.excursions.create(payload.body);
         },
-        onSuccess: () => {
+        onSuccess: (_data, variables) => {
             queryClient.invalidateQueries({ queryKey: ['excursions'] });
             setEditExcursion(null);
             setForm(emptyForm());
+            toast({
+                title: 'Sačuvano',
+                description: variables?.id
+                    ? 'Ekskurzija je ažurirana.'
+                    : 'Nova ekskurzija je dodata u cenovnik.',
+            });
+        },
+        onError: (err) => {
+            toast({
+                title: 'Greška',
+                description: err?.message || 'Čuvanje ekskurzije nije uspelo.',
+                variant: 'destructive',
+            });
         },
     });
 
@@ -122,10 +152,14 @@ export default function ExcursionCalculator() {
         e.preventDefault();
         const adl = parseFloat(form.adl_price);
         if (!form.name.trim() || !Number.isFinite(adl)) return;
+        const chdRaw = String(form.chd_price ?? '').trim();
+        const chdParsed = chdRaw === '' ? null : parseFloat(chdRaw);
+        const chd_price =
+            chdParsed == null || chdRaw === '' ? null : Number.isFinite(chdParsed) && chdParsed >= 0 ? chdParsed : null;
         const body = {
             name: form.name.trim(),
             adl_price: adl,
-            chd_price: form.chd_price === '' ? null : parseFloat(form.chd_price),
+            chd_price,
             icon: form.icon,
             theme: form.theme,
         };
@@ -154,13 +188,12 @@ export default function ExcursionCalculator() {
                     </div>
                     {isAdmin && (
                         <Button
-                            variant="outline"
                             size="sm"
-                            className="rounded-xl gap-2"
+                            className="rounded-xl gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-700 hover:to-teal-700 shadow-md"
                             onClick={openCreate}
                         >
-                            <Settings2 className="w-4 h-4" />
-                            Upravljaj cenovnikom
+                            <Plus className="w-4 h-4" />
+                            Dodaj ekskurziju
                         </Button>
                     )}
                 </div>
@@ -188,7 +221,7 @@ export default function ExcursionCalculator() {
                                     <div className="flex-1 min-w-0">
                                         <p className={`font-bold text-sm ${ex.text}`}>{ex.name}</p>
                                         <p className="text-xs text-slate-500 mt-0.5">
-                                            {ex.icon === 'bus' ? 'Autobus' : 'Brodska ekskurzija'}
+                                            {excursionTypeLabel(ex.icon)}
                                         </p>
                                     </div>
                                     <div className="text-right flex-shrink-0 pr-8">
@@ -241,11 +274,14 @@ export default function ExcursionCalculator() {
                                         disabled={isLoading || excursions.length === 0}
                                     >
                                         <option value="">Odaberi...</option>
-                                        {excursions.map((e) => (
-                                            <option key={e.id} value={e.name}>
-                                                {e.icon === 'bus' ? '🚌' : '⛵'} {e.name}
-                                            </option>
-                                        ))}
+                                        {excursions.map((e) => {
+                                            const opt = EXCURSION_ICON_OPTIONS.find((o) => o.key === e.icon);
+                                            return (
+                                                <option key={e.id} value={e.name}>
+                                                    {opt?.emoji ?? '·'} {e.name}
+                                                </option>
+                                            );
+                                        })}
                                     </select>
 
                                     <Input
@@ -354,21 +390,21 @@ export default function ExcursionCalculator() {
                             </div>
                         </div>
                         <div>
-                            <Label>Tip</Label>
-                            <div className="flex gap-2 mt-1">
-                                {['boat', 'bus'].map((icon) => (
+                            <Label>Tip prevoza</Label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1">
+                                {EXCURSION_ICON_OPTIONS.map(({ key, label }) => (
                                     <button
-                                        key={icon}
+                                        key={key}
                                         type="button"
-                                        onClick={() => setForm({ ...form, icon })}
-                                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-colors ${
-                                            form.icon === icon
+                                        onClick={() => setForm({ ...form, icon: key })}
+                                        className={`flex items-center justify-center gap-2 py-2.5 px-2 rounded-xl border text-sm font-medium transition-colors ${
+                                            form.icon === key
                                                 ? 'border-blue-400 bg-blue-50 text-blue-700'
                                                 : 'border-slate-200 text-slate-500 hover:bg-slate-50'
                                         }`}
                                     >
-                                        <ExcursionIcon icon={icon} className="w-4 h-4" />
-                                        {icon === 'bus' ? 'Autobus' : 'Brod'}
+                                        <ExcursionIcon icon={key} className="w-4 h-4 shrink-0" />
+                                        <span className="leading-tight text-center">{label}</span>
                                     </button>
                                 ))}
                             </div>

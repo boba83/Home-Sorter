@@ -20,15 +20,38 @@ export default function Login() {
   }, [isAuthenticated, navigate]);
 
   React.useEffect(() => {
-    const controller = new AbortController();
-    const t = setTimeout(() => controller.abort(), 5000);
-    fetch('/api/health', { signal: controller.signal, cache: 'no-store' })
-      .then((r) => setApiOnline(r.ok))
-      .catch(() => setApiOnline(false))
-      .finally(() => clearTimeout(t));
+    let cancelled = false;
+    const maxAttempts = 60;
+    let attempt = 0;
+
+    async function pingOnce() {
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 4000);
+      try {
+        const r = await fetch('/api/health', { signal: controller.signal, cache: 'no-store' });
+        return r.ok;
+      } catch {
+        return false;
+      } finally {
+        clearTimeout(t);
+      }
+    }
+
+    async function poll() {
+      while (!cancelled && attempt < maxAttempts) {
+        if (await pingOnce()) {
+          if (!cancelled) setApiOnline(true);
+          return;
+        }
+        attempt += 1;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      if (!cancelled) setApiOnline(false);
+    }
+
+    poll();
     return () => {
-      clearTimeout(t);
-      controller.abort();
+      cancelled = true;
     };
   }, []);
 
@@ -58,13 +81,34 @@ export default function Login() {
           </div>
         </div>
 
+        {apiOnline === null && (
+          <p className="mb-4 text-center text-xs text-slate-500">Proveravam da li API radi (do ~1 min)…</p>
+        )}
+
         {apiOnline === false && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <p className="font-medium">API server nije pokrenut</p>
+            <p className="font-medium">API server nije dostupan</p>
             <p className="mt-1 text-amber-800">
-              U terminalu u korenu projekta pokrenite:{' '}
+              U terminalu u korenu projekta pokrenite{' '}
+              <code className="rounded bg-amber-100 px-1">npm run dev:all</code> (ili{' '}
+              <code className="rounded bg-amber-100 px-1">npm run dev:full</code>
+              ) i sačekajte poruku <strong>Home Sorter API: http://localhost:3001</strong>. Zatim osvežite stranicu.
+            </p>
+            <p className="mt-2 text-amber-800/90">
+              Provera direktno:{' '}
+              <a
+                href="http://127.0.0.1:3001/api/health"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-amber-900 underline"
+              >
+                127.0.0.1:3001/api/health
+              </a>{' '}
+              — ako se ne otvori JSON, API nije pokrenut ili je port zauzet.
+            </p>
+            <p className="mt-2 text-amber-800/90">
+              Ako dobijete „port u upotrebi“:{' '}
               <code className="rounded bg-amber-100 px-1">npm run dev:all:clean</code>
-              , sačekajte poruku na portu 3001, zatim osvežite stranicu.
             </p>
           </div>
         )}

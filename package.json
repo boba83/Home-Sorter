@@ -9,6 +9,7 @@
     "setup:server": "npm run setup --prefix server",
     "ports:free": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/kill-home-sorter-ports.ps1",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
+    "dev:full": "npm run dev:all",
     "dev:all:clean": "npm run ports:free && npm run dev:all",
     "dev:setup": "npm run setup:server",
     "build": "vite build",

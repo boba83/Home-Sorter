@@ -1,3 +1,4 @@
+import './loadEnv.js';
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
@@ -35,6 +36,7 @@ import {
 } from './lib/serialize.js';
 import {
   EXCURSION_THEMES,
+  EXCURSION_ICONS,
   normalizeExcursionTheme,
   normalizeExcursionIcon,
 } from './lib/excursionThemes.js';
@@ -1309,7 +1311,7 @@ app.delete('/api/excursions/:id', authMiddleware, adminOnly, async (req, res) =>
 });
 
 app.get('/api/excursions/meta', authMiddleware, adminOnly, (_req, res) => {
-  res.json({ themes: EXCURSION_THEMES, icons: ['boat', 'bus'] });
+  res.json({ themes: EXCURSION_THEMES, icons: EXCURSION_ICONS });
 });
 
 const ROOM_DUTY_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

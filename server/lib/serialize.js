@@ -1,3 +1,5 @@
+import { normalizeExcursionIcon, normalizeExcursionTheme } from './excursionThemes.js';
+
 function parseJsonArray(value, fallback = []) {
   if (Array.isArray(value)) return value;
   if (typeof value === 'string') {
@@ -282,10 +284,15 @@ export function excursionFromBody(body) {
   }
   if (body.chd_price !== undefined || body.chd !== undefined) {
     const raw = body.chd_price ?? body.chd;
-    data.chdPrice = raw === '' || raw == null ? null : Number(raw);
+    if (raw === '' || raw == null) {
+      data.chdPrice = null;
+    } else {
+      const n = Number(raw);
+      data.chdPrice = Number.isFinite(n) && n >= 0 ? n : null;
+    }
   }
-  if (body.icon != null) data.icon = body.icon === 'bus' ? 'bus' : 'boat';
-  if (body.theme != null) data.theme = String(body.theme);
+  if (body.icon != null) data.icon = normalizeExcursionIcon(String(body.icon));
+  if (body.theme != null) data.theme = normalizeExcursionTheme(String(body.theme));
   if (body.sort_order != null) data.sortOrder = Number(body.sort_order);
   if (body.active !== undefined) data.active = Boolean(body.active);
   return data;
