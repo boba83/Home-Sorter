@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { buildApiUrl } from '@/api/client';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,7 +29,7 @@ export default function Login() {
       const controller = new AbortController();
       const t = setTimeout(() => controller.abort(), 4000);
       try {
-        const r = await fetch('/api/health', { signal: controller.signal, cache: 'no-store' });
+        const r = await fetch(buildApiUrl('/health'), { signal: controller.signal, cache: 'no-store' });
         return r.ok;
       } catch {
         return false;
@@ -88,28 +89,41 @@ export default function Login() {
         {apiOnline === false && (
           <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <p className="font-medium">API server nije dostupan</p>
-            <p className="mt-1 text-amber-800">
-              U terminalu u korenu projekta pokrenite{' '}
-              <code className="rounded bg-amber-100 px-1">npm run dev:all</code> (ili{' '}
-              <code className="rounded bg-amber-100 px-1">npm run dev:full</code>
-              ) i sačekajte poruku <strong>Home Sorter API: http://localhost:3001</strong>. Zatim osvežite stranicu.
-            </p>
             <p className="mt-2 text-amber-800/90">
-              Provera direktno:{' '}
+              Provera API-ja:{' '}
               <a
-                href="http://127.0.0.1:3001/api/health"
+                href={(() => {
+                  const p = buildApiUrl('/health');
+                  return p.startsWith('http') ? p : `${window.location.origin}${p}`;
+                })()}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-amber-900 underline"
+                className="font-medium text-amber-900 underline break-all"
               >
-                127.0.0.1:3001/api/health
+                {(() => {
+                  const p = buildApiUrl('/health');
+                  return p.startsWith('http') ? p : `${window.location.origin}${p}`;
+                })()}
               </a>{' '}
-              — ako se ne otvori JSON, API nije pokrenut ili je port zauzet.
+              — treba JSON <code className="rounded bg-amber-100 px-1">{`{"ok":true}`}</code>.
             </p>
-            <p className="mt-2 text-amber-800/90">
-              Ako dobijete „port u upotrebi“:{' '}
-              <code className="rounded bg-amber-100 px-1">npm run dev:all:clean</code>
-            </p>
+            {import.meta.env.PROD && !import.meta.env.VITE_API_URL && (
+              <p className="mt-2 text-amber-800">
+                Na Vercelu dodajte env <code className="rounded bg-amber-100 px-1">VITE_API_URL</code> ={' '}
+                <code className="rounded bg-amber-100 px-1">https://api.astratravel-sitonija.com</code> i uradite Redeploy.
+              </p>
+            )}
+            {import.meta.env.DEV && (
+              <>
+                <p className="mt-1 text-amber-800">
+                  Lokalno: pokrenite{' '}
+                  <code className="rounded bg-amber-100 px-1">npm run dev:all</code> i sačekajte API na portu 3001.
+                </p>
+                <p className="mt-2 text-amber-800/90">
+                  Ako je port zauzet: <code className="rounded bg-amber-100 px-1">npm run dev:all:clean</code>
+                </p>
+              </>
+            )}
           </div>
         )}
 
