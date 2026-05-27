@@ -1532,14 +1532,15 @@ app.use((err, req, res, _next) => {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-app.get('/', (_req, res) => {
+app.get('/', (req, res) => {
+  const appUrl = appBaseUrl(req).replace(/\/$/, '');
   res.type('text/plain').send(
-    'Home Sorter API radi. Aplikacija: http://localhost:5173/login'
+    `Home Sorter API radi. Aplikacija: ${appUrl}/login`,
   );
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`Home Sorter API: http://localhost:${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Home Sorter API: port ${PORT}`);
 });
 
 server.on('error', (err) => {
