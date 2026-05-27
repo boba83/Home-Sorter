@@ -1,0 +1,20 @@
+# Render Blueprint — API (besplatan tier, hladan start ~1 min)
+# https://render.com — New → Blueprint → poveži repo boba83/Home-Sorter
+services:
+  - type: web
+    name: home-sorter-api
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install && npm run build:deploy
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: APP_URL
+        value: https://www.astratravel-sitonija.com
