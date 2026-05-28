@@ -53,22 +53,23 @@ export default function Landing() {
             <NotificationBell variant="light" />
             <UserProfileButton />
           </div>
-          <div className="flex-1 flex flex-col items-center justify-center">
+          <div className="flex-1 flex flex-col items-center w-full max-w-3xl mx-auto pt-6 sm:pt-10">
             <motion.div
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="text-center mb-12"
+                className="text-center mb-8 w-full shrink-0"
             >
                 <h1 className="text-4xl font-bold text-slate-800 mb-2">Dobrodošli</h1>
                 <p className="text-slate-500">Odaberite aplikaciju</p>
             </motion.div>
 
-            <Tabs defaultValue="apps" className="w-full max-w-3xl mx-auto">
+            <Tabs defaultValue="apps" className="w-full">
               <TabsList className="grid w-full max-w-xs mx-auto grid-cols-2 mb-8">
                 <TabsTrigger value="apps">Aplikacije</TabsTrigger>
                 <TabsTrigger value="ostalo">Ostalo</TabsTrigger>
               </TabsList>
-              <TabsContent value="apps" className="mt-0 outline-none">
+              <div className="w-full min-h-[22rem] sm:min-h-[26rem]">
+              <TabsContent value="apps" className="mt-0 outline-none data-[state=inactive]:hidden">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full items-stretch">
                   {apps.map((app, i) => {
                     const Icon = app.icon;
@@ -100,28 +101,31 @@ export default function Landing() {
                   })}
                 </div>
               </TabsContent>
-              <TabsContent value="ostalo" className="mt-0 outline-none">
-                <motion.div
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mx-auto w-full max-w-md"
-                >
-                  <p className="text-center text-sm text-slate-500 mb-4">
-                    Ostali resursi i informacije za tim.
-                  </p>
-                  <Link to={createPageUrl('ImportantInfo')} className="block">
-                    <div className="bg-orange-50 border border-slate-200 rounded-xl p-5 flex flex-col items-center gap-3 hover:shadow-lg transition-all duration-300 cursor-pointer group hover:-translate-y-0.5">
-                      <div className="w-14 h-14 shrink-0 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-md shadow-orange-500/30 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
-                        <Info className="w-7 h-7 text-white" />
+              <TabsContent value="ostalo" className="mt-0 outline-none data-[state=inactive]:hidden">
+                <p className="text-center text-sm text-slate-500 mb-4">
+                  Ostali resursi i informacije za tim.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full items-stretch">
+                  <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="h-full sm:max-w-none max-w-md mx-auto sm:mx-0 w-full"
+                  >
+                    <Link to={createPageUrl('ImportantInfo')} className="block h-full">
+                      <div className="bg-orange-50 border border-slate-200 rounded-xl p-5 h-full flex flex-col items-center gap-3 hover:shadow-lg transition-all duration-300 cursor-pointer group hover:-translate-y-0.5">
+                        <div className="w-14 h-14 shrink-0 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 shadow-md shadow-orange-500/30 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
+                          <Info className="w-7 h-7 text-white" />
+                        </div>
+                        <div className="text-center w-full min-h-[3.25rem] flex flex-col items-center justify-center">
+                          <h2 className="text-base font-bold text-slate-800 leading-snug">Bitne informacije</h2>
+                          <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">Kontakti i važne informacije</p>
+                        </div>
                       </div>
-                      <div className="text-center w-full">
-                        <h2 className="text-base font-bold text-slate-800 leading-snug">Bitne informacije</h2>
-                        <p className="text-xs text-slate-500 mt-0.5">Kontakti i važne informacije</p>
-                      </div>
-                    </div>
-                  </Link>
-                </motion.div>
+                    </Link>
+                  </motion.div>
+                </div>
               </TabsContent>
+              </div>
             </Tabs>
           </div>
         </div>
