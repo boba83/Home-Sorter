@@ -92,15 +92,11 @@ export const userAuthSelect = {
 };
 
 export async function userHasProfileImage(prisma, userId) {
-  const rows = await prisma.$queryRaw`
-    SELECT CASE
-      WHEN profileImage IS NOT NULL AND length(profileImage) > 0 THEN 1
-      ELSE 0
-    END AS hasImg
-    FROM User
-    WHERE id = ${userId}
-  `;
-  return Boolean(Number(rows[0]?.hasImg));
+  const row = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { profileImage: true },
+  });
+  return Boolean(row?.profileImage?.length);
 }
 
 export function serializeHouse(h) {
