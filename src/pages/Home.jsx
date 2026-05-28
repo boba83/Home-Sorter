@@ -16,6 +16,7 @@ import HouseCard from '@/components/HouseCard';
 import LocationFolder from '@/components/LocationFolder';
 import { motion, AnimatePresence } from 'framer-motion';
 import ErrorBoundary from '@/lib/ErrorBoundary';
+import { sortRoomsByNumber } from '@/lib/roomNumberSort';
 
 const ALL_LOCATIONS = [
     'Sarti', 'Sykia', 'Klimataria', 'Kalamitsi', 'Porto Koufo',
@@ -127,11 +128,13 @@ export default function Home() {
 
     const getRoomsForHouse = (houseId) => {
         const hid = houseId == null ? '' : String(houseId);
-        return roomList.filter((room) => {
-            const rid = room?.house_id ?? room?.houseId;
-            if (rid == null) return false;
-            return String(rid) === hid;
-        });
+        return sortRoomsByNumber(
+            roomList.filter((room) => {
+                const rid = room?.house_id ?? room?.houseId;
+                if (rid == null) return false;
+                return String(rid) === hid;
+            }),
+        );
     };
 
     const openAddHouseDialog = () => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Building2, ArrowLeft, DoorOpen, Users, Plus, Edit2, Trash2, Loader2, UserCircle, Lock, MapPin } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { sortRoomsByNumber } from '@/lib/roomNumberSort';
 
 const ALL_LOCATIONS = [
     'Sarti', 'Sykia', 'Klimataria', 'Kalamitsi', 'Porto Koufo',
@@ -54,7 +55,10 @@ export default function HouseDetails() {
         enabled: !!houseId
     });
 
-    const roomList = Array.isArray(rooms) ? rooms : [];
+    const roomList = useMemo(
+        () => sortRoomsByNumber(Array.isArray(rooms) ? rooms : []),
+        [rooms],
+    );
 
     const { data: currentUser } = useQuery({
         queryKey: ['currentUser'],

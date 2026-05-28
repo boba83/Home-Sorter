@@ -46,6 +46,7 @@ import {
   scanHotelNamesInText,
   splitPdfTextToLines,
 } from './lib/astraRoomingParser.js';
+import { sortRoomsByNumber } from '../src/lib/roomNumberSort.js';
 import { notifyOnTaskCreated, notifyOnTaskUpdated } from './lib/taskNotifications.js';
 import { sendInviteEmail, isMailConfigured } from './lib/mail.js';
 import { generateTemporaryPassword, validatePasswordStrength } from './lib/password.js';
@@ -395,7 +396,11 @@ app.get('/api/rooms', authMiddleware, async (req, res) => {
     where,
     orderBy: parseSort(req.query.sort, ['createdAt']),
   });
-  res.json(rooms.map(serializeRoom));
+  let payload = rooms.map(serializeRoom);
+  if (req.query.house_id && !req.query.sort) {
+    payload = sortRoomsByNumber(payload);
+  }
+  res.json(payload);
 });
 
 async function refreshHouseTotals(houseId) {
