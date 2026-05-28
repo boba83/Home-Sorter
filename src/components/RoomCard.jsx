@@ -45,14 +45,24 @@ function formatStayDate(value) {
     return s;
 }
 
-export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, canDelete = false }) {
-    if (!room?.id) return null;
+/** dd.MM.yyyy → yyyy-MM-dd za <input type="date"> */
+function stayDateToInputValue(value) {
+    if (!value) return '';
+    const s = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if (s.includes('.')) {
+        const [day, month, year] = s.split('.').filter(Boolean);
+        if (day && month && year) {
+            return `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        }
+    }
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return format(d, 'yyyy-MM-dd');
+    return '';
+}
 
-    const occupantNames = normalizeNames(room.occupant_names);
-
-    const [isEditing, setIsEditing] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
-    const [editData, setEditData] = useState({
+function roomToEditData(room, occupantNames) {
+    return {
         room_number: room.room_number || '',
         room_structure: room.room_structure || '',
         capacity: room.capacity || 1,
@@ -60,12 +70,22 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
         notes: room.notes || '',
         excursion: room.excursion || '',
         visit: room.visit || '',
-        stay_from: room.stay_from || '',
-        stay_to: room.stay_to || '',
+        stay_from: stayDateToInputValue(room.stay_from),
+        stay_to: stayDateToInputValue(room.stay_to),
         tax_paid: room.tax_paid === true,
         contact_phone: room.contact_phone || '',
         contract_number: room.contract_number || '',
-    });
+    };
+}
+
+export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, canDelete = false }) {
+    if (!room?.id) return null;
+
+    const occupantNames = normalizeNames(room.occupant_names);
+
+    const [isEditing, setIsEditing] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [editData, setEditData] = useState(() => roomToEditData(room, occupantNames));
     const [newVisitEntry, setNewVisitEntry] = useState('');
     const [visitExpanded, setVisitExpanded] = useState(true);
 
@@ -240,20 +260,9 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                                 size="icon"
                                                 className="h-7 w-7"
                                                 onClick={() => {
-                                                    setEditData({
-                                                        room_number: room.room_number || '',
-                                                        room_structure: room.room_structure || '',
-                                                        capacity: room.capacity || 1,
-                                                        occupant_names: normalizeNames(room.occupant_names),
-                                                        notes: room.notes || '',
-                                                        excursion: room.excursion || '',
-                                                        visit: room.visit || '',
-                                                        stay_from: room.stay_from || '',
-                                                        stay_to: room.stay_to || '',
-                                                        tax_paid: room.tax_paid === true,
-                                                        contact_phone: room.contact_phone || '',
-                                                        contract_number: room.contract_number || '',
-                                                    });
+                                                    setEditData(
+                                                        roomToEditData(room, normalizeNames(room.occupant_names)),
+                                                    );
                                                     setNewVisitEntry('');
                                                     setIsEditing(true);
                                                 }}
@@ -460,25 +469,38 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                 </motion.div>
                             )}
                         </motion.div>
-                        <motion.div className="grid grid-cols-2 gap-4">
-                            <motion.div className="space-y-2">
-                                <Label htmlFor="stay_from">Stay From</Label>
-                                <Input
-                                    id="stay_from"
-                                    type="date"
-                                    value={editData.stay_from || ''}
-                                    onChange={(e) => setEditData({...editData, stay_from: e.target.value})}
-                                />
-                            </motion.div>
-                            <motion.div className="space-y-2">
-                                <Label htmlFor="stay_to">Stay To</Label>
-                                <Input
-                                    id="stay_to"
-                                    type="date"
-                                    value={editData.stay_to || ''}
-                                    onChange={(e) => setEditData({...editData, stay_to: e.target.value})}
-                                />
-                            </motion.div>
+                        <motion.div className="space-y-2">
+                            <Label className="flex items-center gap-2 text-slate-700">
+                                <Calendar className="w-4 h-4 text-violet-600" />
+                                Datum boravka
+                            </Label>
+                            {(room.stay_from || room.stay_to) && (
+                                <p className="text-xs text-slate-500">
+                                    Na kartici: {formatStayDate(room.stay_from) || '?'}
+                                    {' — '}
+                                    {formatStayDate(room.stay_to) || '?'}
+                                </p>
+                            )}
+                            <div className="grid grid-cols-2 gap-4">
+                                <motion.div className="space-y-2">
+                                    <Label htmlFor="stay_from">Od (Stay From)</Label>
+                                    <Input
+                                        id="stay_from"
+                                        type="date"
+                                        value={editData.stay_from || ''}
+                                        onChange={(e) => setEditData({ ...editData, stay_from: e.target.value })}
+                                    />
+                                </motion.div>
+                                <motion.div className="space-y-2">
+                                    <Label htmlFor="stay_to">Do (Stay To)</Label>
+                                    <Input
+                                        id="stay_to"
+                                        type="date"
+                                        value={editData.stay_to || ''}
+                                        onChange={(e) => setEditData({ ...editData, stay_to: e.target.value })}
+                                    />
+                                </motion.div>
+                            </div>
                         </motion.div>
                         <motion.div className="space-y-2 bg-amber-50 border border-amber-200 rounded-xl p-3 min-w-0 overflow-hidden">
                             <motion.div className="flex items-center gap-2 mb-2">
