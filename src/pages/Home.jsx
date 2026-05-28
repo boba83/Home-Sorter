@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from "@/components/ui/button";
-import { Building2, Upload, Search, LayoutGrid, List, Users, Trash2, CheckSquare, Square, ArrowLeft, FileDown, Plus, Loader2 } from 'lucide-react';
+import { Building2, Upload, Search, LayoutGrid, List, Users, Trash2, CheckSquare, Square, ArrowLeft, FileDown, Plus, Loader2, CalendarRange, X } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,6 +17,11 @@ import LocationFolder from '@/components/LocationFolder';
 import { motion, AnimatePresence } from 'framer-motion';
 import ErrorBoundary from '@/lib/ErrorBoundary';
 import { sortRoomsByNumber } from '@/lib/roomNumberSort';
+import {
+    roomMatchesStayPeriod,
+    formatStayDateDisplay,
+    escapeXmlText,
+} from '@/lib/stayDateRange';
 
 const ALL_LOCATIONS = [
     'Sarti', 'Sykia', 'Klimataria', 'Kalamitsi', 'Porto Koufo',
@@ -55,7 +60,11 @@ export default function Home() {
     const [isAddingHouse, setIsAddingHouse] = useState(false);
     const [isSavingHouse, setIsSavingHouse] = useState(false);
     const [newHouseData, setNewHouseData] = useState({ name: '', address: '', location: '' });
+    const [stayPeriodFrom, setStayPeriodFrom] = useState('');
+    const [stayPeriodTo, setStayPeriodTo] = useState('');
     const queryClient = useQueryClient();
+
+    const stayPeriodActive = Boolean(stayPeriodFrom && stayPeriodTo);
 
     const effectiveImportLocation = selectedLocation || importTargetLocation || null;
 
@@ -126,15 +135,19 @@ export default function Home() {
         }
     };
 
-    const getRoomsForHouse = (houseId) => {
+    const getRoomsForHouse = (houseId, { periodOnly = false } = {}) => {
         const hid = houseId == null ? '' : String(houseId);
-        return sortRoomsByNumber(
-            roomList.filter((room) => {
-                const rid = room?.house_id ?? room?.houseId;
-                if (rid == null) return false;
-                return String(rid) === hid;
-            }),
-        );
+        let rooms = roomList.filter((room) => {
+            const rid = room?.house_id ?? room?.houseId;
+            if (rid == null) return false;
+            return String(rid) === hid;
+        });
+        if (periodOnly && stayPeriodActive) {
+            rooms = rooms.filter((room) =>
+                roomMatchesStayPeriod(room, stayPeriodFrom, stayPeriodTo),
+            );
+        }
+        return sortRoomsByNumber(rooms);
     };
 
     const openAddHouseDialog = () => {
@@ -203,18 +216,22 @@ export default function Home() {
     };
 
     const filteredHouses = userFilteredHouses.filter((house) => {
-        const query = searchQuery.toLowerCase().trim();
-        const houseNameMatch = getHouseName(house).toLowerCase().includes(query);
+        const houseRooms = getRoomsForHouse(house.id, { periodOnly: stayPeriodActive });
+        if (stayPeriodActive && houseRooms.length === 0) return false;
 
-        const houseRooms = getRoomsForHouse(house.id);
-        const guestNameMatch = houseRooms.some((room) =>
-            getOccupantNames(room).some((name) =>
-                String(name).toLowerCase().includes(query)
-            )
-        );
+        const query = searchQuery.toLowerCase().trim();
+        const houseNameMatch = !query || getHouseName(house).toLowerCase().includes(query);
+        const guestNameMatch =
+            !query ||
+            houseRooms.some((room) =>
+                getOccupantNames(room).some((name) =>
+                    String(name).toLowerCase().includes(query),
+                ),
+            );
 
         const loc = (house.location || '').trim();
         const locationMatch =
+            stayPeriodActive ||
             !selectedLocation ||
             selectedLocation === '__all__' ||
             (selectedLocation === '__unlocated__'
@@ -223,6 +240,13 @@ export default function Home() {
 
         return (houseNameMatch || guestNameMatch) && locationMatch;
     });
+
+    const periodMatchRooms = stayPeriodActive
+        ? filteredHouses.flatMap((h) => getRoomsForHouse(h.id, { periodOnly: true }))
+        : [];
+
+    const showHouseList =
+        Boolean(selectedLocation) || Boolean(searchQuery.trim()) || stayPeriodActive;
 
     const getLocationStats = (location) => {
         const locationHouses = userFilteredHouses.filter(
@@ -249,7 +273,8 @@ export default function Home() {
 
     const isLoading = housesLoading || roomsLoading;
     const isUserFilterActive = filterByUser !== 'all' && canFilterByAllUsers;
-    const showLocationPicker = !searchQuery && !selectedLocation && userFilteredHouses.length > 0;
+    const showLocationPicker =
+        !searchQuery && !selectedLocation && !stayPeriodActive && userFilteredHouses.length > 0;
     const loadError = housesError || roomsError;
 
     const toggleSelectAll = () => {
@@ -270,54 +295,88 @@ export default function Home() {
         setSelectedHouses(newSelected);
     };
 
-    const handleExportXML = (location) => {
-        const locationHouses = userFilteredHouses.filter(
-            (h) => (h.location || '').trim() === location
-        );
-        
+    const buildHousesExportXml = (houses, { label, periodOnly = false }) => {
         let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-        xml += `<export lokacija="${location}" datum="${new Date().toISOString().slice(0, 10)}">\n`;
+        xml += `<export naziv="${escapeXmlText(label)}" datum="${new Date().toISOString().slice(0, 10)}"`;
+        if (stayPeriodActive) {
+            xml += ` periodOd="${escapeXmlText(formatStayDateDisplay(stayPeriodFrom))}" periodDo="${escapeXmlText(formatStayDateDisplay(stayPeriodTo))}"`;
+        }
+        xml += `>\n`;
 
-        for (const house of locationHouses) {
-            const houseRooms = getRoomsForHouse(house.id);
-            xml += `  <kuca id="${house.id}" naziv="${house.name || ''}" adresa="${house.address || ''}" odgovornaOsoba="${house.responsible_person || ''}">\n`;
+        for (const house of houses) {
+            const houseRooms = getRoomsForHouse(house.id, { periodOnly });
+            if (houseRooms.length === 0) continue;
+            xml += `  <kuca id="${escapeXmlText(house.id)}" naziv="${escapeXmlText(house.name)}" lokacija="${escapeXmlText(house.location)}" adresa="${escapeXmlText(house.address)}" odgovornaOsoba="${escapeXmlText(house.responsible_person)}">\n`;
             for (const room of houseRooms) {
-                xml += `    <soba broj="${room.room_number || ''}" struktura="${room.room_structure || ''}" kapacitet="${room.capacity || ''}" trenutnoGostiju="${room.current_occupants || 0}">\n`;
-                if (room.occupant_names && room.occupant_names.length > 0) {
+                xml += `    <soba broj="${escapeXmlText(room.room_number)}" struktura="${escapeXmlText(room.room_structure)}" kapacitet="${room.capacity || ''}" trenutnoGostiju="${room.current_occupants || 0}">\n`;
+                const names = getOccupantNames(room);
+                if (names.length > 0) {
                     xml += `      <gosti>\n`;
-                    for (const name of room.occupant_names) {
-                        xml += `        <gost>${name}</gost>\n`;
+                    for (const name of names) {
+                        xml += `        <gost>${escapeXmlText(name)}</gost>\n`;
                     }
                     xml += `      </gosti>\n`;
                 }
-                xml += `      <boravakOd>${room.stay_from || ''}</boravakOd>\n`;
-                xml += `      <boravakDo>${room.stay_to || ''}</boravakDo>\n`;
-                xml += `      <ekskurzija>${room.excursion || ''}</ekskurzija>\n`;
-                xml += `      <poseta>${room.visit || ''}</poseta>\n`;
+                xml += `      <boravakOd>${escapeXmlText(room.stay_from)}</boravakOd>\n`;
+                xml += `      <boravakDo>${escapeXmlText(room.stay_to)}</boravakDo>\n`;
+                xml += `      <ekskurzija>${escapeXmlText(room.excursion)}</ekskurzija>\n`;
+                xml += `      <poseta>${escapeXmlText(room.visit)}</poseta>\n`;
                 xml += `      <autobus>${room.bus ? 'da' : 'ne'}</autobus>\n`;
                 xml += `      <porezPlacen>${room.tax_paid ? 'da' : 'ne'}</porezPlacen>\n`;
-                if (room.notes) xml += `      <napomene>${room.notes}</napomene>\n`;
+                if (room.notes) xml += `      <napomene>${escapeXmlText(room.notes)}</napomene>\n`;
                 xml += `    </soba>\n`;
             }
             xml += `  </kuca>\n`;
         }
 
         xml += `</export>`;
+        return xml;
+    };
 
+    const downloadXmlExport = (xml, filename) => {
         const blob = new Blob([xml], { type: 'application/xml' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${location}_smena_${new Date().toISOString().slice(0, 10)}.xml`;
+        a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
+    };
+
+    const handleExportXML = (location) => {
+        const locationHouses = userFilteredHouses.filter(
+            (h) => (h.location || '').trim() === location,
+        );
+        const xml = buildHousesExportXml(locationHouses, { label: location, periodOnly: false });
+        downloadXmlExport(xml, `${location}_smena_${new Date().toISOString().slice(0, 10)}.xml`);
+    };
+
+    const handleExportPeriodResults = () => {
+        if (filteredHouses.length === 0) {
+            alert('Nema kuća/soba za izvoz u izabranom periodu.');
+            return;
+        }
+        const xml = buildHousesExportXml(filteredHouses, {
+            label: `Smena ${formatStayDateDisplay(stayPeriodFrom)}-${formatStayDateDisplay(stayPeriodTo)}`,
+            periodOnly: true,
+        });
+        const fileSlug = `${stayPeriodFrom}_${stayPeriodTo}`.replace(/-/g, '');
+        downloadXmlExport(xml, `smena_${fileSlug}.xml`);
+    };
+
+    const clearStayPeriod = () => {
+        setStayPeriodFrom('');
+        setStayPeriodTo('');
+        setSelectedHouses(new Set());
     };
 
     const handleDeleteSelected = async () => {
         if (selectedHouses.size === 0) return;
 
         const count = selectedHouses.size;
-        const confirmed = confirm(`Are you sure you want to delete ${count} house(s) and all their rooms?`);
+        const confirmed = confirm(
+            `Da li ste sigurni da želite da obrišete ${count} kuća i sve njihove sobe? Ova radnja se ne može poništiti.`,
+        );
         if (!confirmed) return;
 
         setIsDeleting(true);
@@ -430,6 +489,93 @@ export default function Home() {
                             </Button>
                         </div>
                     </div>
+
+                    <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50/60 p-4">
+                        <div className="flex flex-wrap items-end gap-3">
+                            <div className="flex items-center gap-2 text-violet-900 font-medium text-sm w-full sm:w-auto">
+                                <CalendarRange className="w-4 h-4 shrink-0" />
+                                Pretraga po smeni (datum boravka)
+                            </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="stay_period_from" className="text-xs text-violet-800">
+                                    Od
+                                </Label>
+                                <Input
+                                    id="stay_period_from"
+                                    type="date"
+                                    value={stayPeriodFrom}
+                                    onChange={(e) => {
+                                        setStayPeriodFrom(e.target.value);
+                                        setSelectedHouses(new Set());
+                                    }}
+                                    className="bg-white w-40"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <Label htmlFor="stay_period_to" className="text-xs text-violet-800">
+                                    Do
+                                </Label>
+                                <Input
+                                    id="stay_period_to"
+                                    type="date"
+                                    value={stayPeriodTo}
+                                    onChange={(e) => {
+                                        setStayPeriodTo(e.target.value);
+                                        setSelectedHouses(new Set());
+                                    }}
+                                    className="bg-white w-40"
+                                />
+                            </div>
+                            {stayPeriodActive && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={clearStayPeriod}
+                                    className="gap-1 border-violet-300"
+                                >
+                                    <X className="w-4 h-4" />
+                                    Obriši period
+                                </Button>
+                            )}
+                            {stayPeriodActive && canManageHouses && filteredHouses.length > 0 && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleExportPeriodResults}
+                                    className="gap-2 border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+                                >
+                                    <FileDown className="w-4 h-4" />
+                                    Izvezi XML ({filteredHouses.length} kuća)
+                                </Button>
+                            )}
+                        </div>
+                        {stayPeriodActive && (
+                            <p className="mt-3 text-sm text-violet-900/90">
+                                Period:{' '}
+                                <strong>
+                                    {formatStayDateDisplay(stayPeriodFrom)} — {formatStayDateDisplay(stayPeriodTo)}
+                                </strong>
+                                {' · '}
+                                <strong>{filteredHouses.length}</strong> kuća,{' '}
+                                <strong>{periodMatchRooms.length}</strong> soba sa preklapajućim boravkom
+                                {filteredHouses.length === 0 && (
+                                    <span className="text-amber-800">
+                                        {' '}
+                                        — nema soba sa datumima u tom intervalu
+                                    </span>
+                                )}
+                            </p>
+                        )}
+                        {!stayPeriodActive && (
+                            <p className="mt-2 text-xs text-violet-800/80">
+                                Izaberite oba datuma — prikazuju se kuće i sobe čiji boravak preklapa period.
+                                Zatim izvezite XML i po potrebi obrišite izabrane kuće (admin).
+                            </p>
+                        )}
+                    </div>
+
                     {isUserFilterActive && (
                         <p className="text-sm text-slate-600 mb-2">
                             Korisnik: <strong>{userDisplayName(filterUser) || '…'}</strong>
@@ -458,7 +604,7 @@ export default function Home() {
                         </p>
                     )}
 
-                    {isAdmin && (selectedLocation || searchQuery) && filteredHouses.length > 0 && (
+                    {isAdmin && showHouseList && filteredHouses.length > 0 && (
                         <div className="flex items-center gap-2 mt-4 bg-white border border-slate-200 rounded-lg p-3">
                             <Button
                                 variant="outline"
@@ -713,9 +859,9 @@ export default function Home() {
                 )}
 
                 {/* Houses Grid */}
-                {(!selectedLocation && !searchQuery) ? (
+                {!showHouseList ? (
                     <motion.div className="text-center py-10 text-slate-500 text-sm" layout>
-                        Izaberite lokaciju iznad ili koristite pretragu da otvorite kuće.
+                        Izaberite lokaciju, unesite pretragu ili period smene da vidite kuće.
                     </motion.div>
                 ) : isLoading ? (
                     <div className={`grid gap-6 ${viewMode === 'grid' ? 'md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'}`}>
@@ -757,7 +903,9 @@ export default function Home() {
                                 )}
                                 <HouseCard
                                     house={house}
-                                    rooms={getRoomsForHouse(house.id)}
+                                    rooms={getRoomsForHouse(house.id, {
+                                        periodOnly: stayPeriodActive,
+                                    })}
                                     userColor={getUserColor(house.responsible_person)}
                                     detailsScope={houseScope}
                                 />
@@ -770,14 +918,25 @@ export default function Home() {
                             <Building2 className="w-10 h-10 text-slate-300" />
                         </div>
                         <h3 className="text-xl font-semibold text-slate-800 mb-2">
-                            {searchQuery ? 'Nema rezultata' : 'Nema kuća na ovoj lokaciji'}
+                            {stayPeriodActive
+                                ? 'Nema kuća u tom periodu'
+                                : searchQuery
+                                  ? 'Nema rezultata'
+                                  : 'Nema kuća na ovoj lokaciji'}
                         </h3>
                         <p className="text-slate-500 mb-6 max-w-sm mx-auto">
-                            {searchQuery
-                                ? 'Probajte drugi pojam za pretragu'
-                                : 'Uvezite rooming listu (PDF) ili dodajte kuću ručno ako nije u listi'}
+                            {stayPeriodActive
+                                ? 'Proverite datume ili uvezite rooming listu sa boravakOd/boravakDo na sobama.'
+                                : searchQuery
+                                  ? 'Probajte drugi pojam za pretragu'
+                                  : 'Uvezite rooming listu (PDF) ili dodajte kuću ručno ako nije u listi'}
                         </p>
-                        {!searchQuery && selectedLocation && (
+                        {stayPeriodActive && (
+                            <Button variant="outline" onClick={clearStayPeriod} className="mb-4">
+                                Obriši filter perioda
+                            </Button>
+                        )}
+                        {!searchQuery && !stayPeriodActive && selectedLocation && (
                             <div className="flex flex-wrap justify-center gap-3">
                                 {canManageHouses && (
                                     <Button
