@@ -275,7 +275,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                             </motion.div>
                         </motion.div>
 
-                        <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pr-0.5">
+                        <div className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden space-y-3 pr-0.5">
                         {/* Occupancy + gosti (kao na preview-u) */}
                         <motion.div>
                             <motion.div className="flex items-center justify-between text-sm mb-2">
@@ -337,7 +337,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
 
                         {/* Visit record */}
                         {visitHistory.length > 0 && (
-                            <motion.div className="bg-amber-50 border border-amber-200/90 rounded-xl px-3 py-2.5 shadow-sm">
+                            <motion.div className="bg-amber-50 border border-amber-200/90 rounded-xl px-3 py-2.5 shadow-sm min-w-0 max-w-full overflow-hidden">
                                 <button
                                     type="button"
                                     className="flex items-center justify-between w-full text-sm font-semibold text-amber-950 mb-1"
@@ -359,8 +359,8 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                 {visitExpanded && (
                                     <motion.div className="space-y-2 pt-1">
                                         {visitHistory.map((entry, i) => (
-                                            <motion.div key={i} className="rounded-lg bg-white/70 border border-amber-100 px-2.5 py-2">
-                                                <p className="text-sm text-orange-800 font-medium leading-snug">{entry.text}</p>
+                                            <motion.div key={i} className="rounded-lg bg-white/70 border border-amber-100 px-2.5 py-2 min-w-0 overflow-hidden">
+                                                <p className="text-sm text-orange-800 font-medium leading-snug break-words break-all whitespace-pre-wrap">{entry.text}</p>
                                                 {entry.timestamp && (
                                                     <p className="text-xs text-orange-600 mt-1 tabular-nums">
                                                         {format(new Date(entry.timestamp), 'dd.MM.yyyy HH:mm')}
@@ -375,11 +375,11 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
 
                         {/* Ekskurzija — poslednji blok ispod visit-a */}
                         {room.excursion && (
-                            <motion.div className="flex items-start gap-2.5 text-sm rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5">
+                            <motion.div className="flex items-start gap-2.5 text-sm rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2.5 min-w-0 max-w-full overflow-hidden">
                                 <span className="w-5 h-5 rounded-md flex items-center justify-center bg-blue-500 flex-shrink-0 shadow-sm">
                                     <Sailboat className="w-3 h-3 text-white" />
                                 </span>
-                                <p className="text-slate-700 leading-snug pt-0.5">
+                                <p className="text-slate-700 leading-snug pt-0.5 min-w-0 flex-1 break-words break-all whitespace-pre-wrap">
                                     <span className="font-semibold text-slate-800">Excursion: </span>
                                     {room.excursion}
                                 </p>
@@ -480,7 +480,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                 />
                             </motion.div>
                         </motion.div>
-                        <motion.div className="space-y-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                        <motion.div className="space-y-2 bg-amber-50 border border-amber-200 rounded-xl p-3 min-w-0 overflow-hidden">
                             <motion.div className="flex items-center gap-2 mb-2">
                                 <span className="w-4 h-4 rounded flex items-center justify-center bg-orange-500">
                                     <UserCheck className="w-2.5 h-2.5 text-white" />
@@ -490,8 +490,8 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                             {parseVisitHistory(room.visit).length > 0 && (
                                 <motion.div className="space-y-1.5 mb-3">
                                     {parseVisitHistory(room.visit).map((entry, i) => (
-                                        <motion.div key={i} className="text-sm bg-white border border-amber-200 rounded-lg px-3 py-2">
-                                            <p className="text-amber-900">{entry.text}</p>
+                                        <motion.div key={i} className="text-sm bg-white border border-amber-200 rounded-lg px-3 py-2 min-w-0 overflow-hidden">
+                                            <p className="text-amber-900 break-words break-all whitespace-pre-wrap">{entry.text}</p>
                                             {entry.timestamp && (
                                                 <p className="text-xs text-orange-400 mt-0.5">
                                                     {format(new Date(entry.timestamp), 'dd.MM.yyyy HH:mm')}
@@ -521,7 +521,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                 id="excursion"
                                 value={editData.excursion}
                                 onChange={(e) => setEditData({...editData, excursion: e.target.value})}
-                                className="h-20"
+                                className="h-20 break-words break-all resize-y max-w-full"
                             />
                         </motion.div>
                         <motion.div className="space-y-2">
