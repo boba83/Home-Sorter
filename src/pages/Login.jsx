@@ -5,7 +5,9 @@ import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Building2, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+
+const LOGIN_ICON = '/home-sorter-login-icon.png';
 
 export default function Login() {
   const { login, isAuthenticated } = useAuth();
@@ -72,10 +74,14 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-blue-50 p-6">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 p-8">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center">
-            <Building2 className="w-6 h-6 text-white" />
-          </div>
+        <div className="flex items-center gap-4 mb-6">
+          <img
+            src={LOGIN_ICON}
+            alt="Home Sorter"
+            className="w-16 h-16 rounded-xl object-cover shadow-sm ring-1 ring-slate-200/80 shrink-0"
+            width={64}
+            height={64}
+          />
           <div>
             <h1 className="text-xl font-bold text-slate-800">Home Sorter</h1>
             <p className="text-sm text-slate-500">Vaša lokalna aplikacija — bez Base44</p>
