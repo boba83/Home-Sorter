@@ -84,7 +84,9 @@ export default function Login() {
           />
           <div>
             <h1 className="text-xl font-bold text-slate-800">Home Sorter</h1>
-            <p className="text-sm text-slate-500">Vaša lokalna aplikacija — bez Base44</p>
+            <p className="text-sm text-slate-500">
+              Vaš digitalni pomoćnik u organizaciji poslovanja — powered by Astra travel
+            </p>
           </div>
         </div>
 
