@@ -78,9 +78,9 @@ export default function Login() {
           <img
             src={LOGIN_ICON}
             alt="Home Sorter"
-            className="w-16 h-16 rounded-xl object-cover shadow-sm ring-1 ring-slate-200/80 shrink-0"
-            width={64}
-            height={64}
+            className="w-[4.5rem] h-[4.5rem] rounded-xl object-contain bg-white shadow-sm ring-1 ring-slate-200/80 shrink-0 p-0.5"
+            width={72}
+            height={72}
           />
           <div>
             <h1 className="text-xl font-bold text-slate-800">Home Sorter</h1>
