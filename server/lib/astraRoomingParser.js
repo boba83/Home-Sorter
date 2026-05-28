@@ -211,8 +211,17 @@ function normalizeRoomNumber(raw) {
     .toUpperCase();
 }
 
-/** PDF ponekad "sobu" uhvati kao isti broj kao redni broj gosta (npr. 6 → Room 6). Apartman "1" za prvi red (indeks 1) je uobičajen i validan. */
-function isPhantomRoomFromLineIndex(lineIdxRaw, roomNoRaw) {
+/**
+ * PDF ponekad u koloni Room stoji redni broj gosta umesto broja sobe (npr. gost #6 → Room 6).
+ * Astra format: `… ugovor NA <soba> 1/3 STUDIO …` — posle "NA" je pravi broj sobe;
+ * tada se NE sme odbaciti čak kad se poklapa sa rednim brojem (npr. gost 3 → soba 3).
+ */
+function hasExplicitAstraRoomColumn(columnBeforeRoom) {
+  return /^NA$/i.test(String(columnBeforeRoom || '').trim());
+}
+
+function isPhantomRoomFromLineIndex(lineIdxRaw, roomNoRaw, columnBeforeRoom) {
+  if (hasExplicitAstraRoomColumn(columnBeforeRoom)) return false;
   const idx = parseInt(String(lineIdxRaw).trim(), 10);
   const rn = normalizeRoomNumber(roomNoRaw);
   if (!rn || /[A-Za-z]/.test(rn)) return false;
@@ -284,7 +293,7 @@ function parsePrimaryGuestLine(line) {
   if (withVoucher) {
     const lineIdx = withVoucher[1];
     const roomNo = normalizeRoomNumber(withVoucher[6]);
-    if (isPhantomRoomFromLineIndex(lineIdx, roomNo)) return null;
+    if (isPhantomRoomFromLineIndex(lineIdx, roomNo, withVoucher[5])) return null;
     if (!looksLikePrimaryBookingTail(withVoucher[7])) return null;
     return {
       sex: withVoucher[2],
@@ -298,7 +307,7 @@ function parsePrimaryGuestLine(line) {
   if (noVoucher) {
     const lineIdx = noVoucher[1];
     const roomNo = normalizeRoomNumber(noVoucher[4]);
-    if (isPhantomRoomFromLineIndex(lineIdx, roomNo)) return null;
+    if (isPhantomRoomFromLineIndex(lineIdx, roomNo, null)) return null;
     if (!looksLikePrimaryBookingTail(noVoucher[5])) return null;
     let tail = noVoucher[5];
     // Ugovor u repu: npr. 123456/25 ili 123/2024 (ne mešati sa 1/3 u strukturi — traži 3+ cifre pre /).
