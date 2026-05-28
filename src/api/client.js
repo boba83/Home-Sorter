@@ -29,6 +29,15 @@ async function parseJsonResponse(res) {
 const REQUEST_TIMEOUT_MS = 20000;
 const AUTH_TIMEOUT_MS = 10000;
 
+/** Produkcija (Vercel): VITE_API_URL=https://api.astratravel-sitonija.com — lokalno prazno → Vite proxy /api */
+const API_BASE = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+export function buildApiUrl(path) {
+  const p = path.startsWith('/') ? path : `/${path}`;
+  const apiPath = p.startsWith('/api') ? p : `/api${p}`;
+  return API_BASE ? `${API_BASE}${apiPath}` : apiPath;
+}
+
 async function request(path, options = {}, attempt = 0) {
   const timeoutMs = path.startsWith('/auth') ? AUTH_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
   const headers = {
@@ -48,7 +57,7 @@ async function request(path, options = {}, attempt = 0) {
 
   let res;
   try {
-    res = await fetch(withCacheBust(`/api${path}`), {
+    res = await fetch(withCacheBust(buildApiUrl(path)), {
       ...restOptions,
       headers,
       cache: 'no-store',
