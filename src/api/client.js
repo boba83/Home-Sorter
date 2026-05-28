@@ -182,7 +182,7 @@ async function apiFetch(path, options = {}) {
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  return fetch(withCacheBust(`/api${path}`), {
+  return fetch(withCacheBust(buildApiUrl(path)), {
     ...options,
     headers,
     cache: 'no-store',
@@ -301,7 +301,7 @@ const info = {
   async fetchFileBlob(id, { inline = false } = {}) {
     const token = getToken();
     const q = inline ? '?inline=1' : '';
-    const res = await fetch(withCacheBust(`/api/info/files/${id}/download${q}`), {
+    const res = await fetch(withCacheBust(buildApiUrl(`/info/files/${id}/download${q}`)), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       cache: 'no-store',
     });
