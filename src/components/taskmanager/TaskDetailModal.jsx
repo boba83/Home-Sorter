@@ -17,7 +17,26 @@ import { LABEL_OPTIONS, LABEL_COLORS } from './taskLabels';
 
 const EPIC_COLORS = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2'];
 
-export default function TaskDetailModal({ task, users = [], currentUserEmail = '', readOnly = false, onClose, onSave, onDelete }) {
+function resolveCommentAuthorLabel(comment, users) {
+  if (comment?.author_name && String(comment.author_name).trim()) return String(comment.author_name).trim();
+  const email = (comment?.author || '').trim();
+  if (email && Array.isArray(users)) {
+    const u = users.find((x) => (x.email || '').toLowerCase() === email.toLowerCase());
+    if (u?.full_name) return u.full_name;
+  }
+  return email || 'Nepoznat autor';
+}
+
+export default function TaskDetailModal({
+  task,
+  users = [],
+  currentUser = null,
+  currentUserEmail = '',
+  readOnly = false,
+  onClose,
+  onSave,
+  onDelete,
+}) {
   const [form, setForm] = useState({
     title: task.title || '',
     description: task.description || '',
@@ -78,11 +97,24 @@ export default function TaskDetailModal({ task, users = [], currentUserEmail = '
 
   const addComment = () => {
     if (!newComment.trim()) return;
-    setForm(prev => ({
+    const email = (currentUser?.email || currentUserEmail || '').trim();
+    const fromAssignable = users.find((u) => (u.email || '').toLowerCase() === email.toLowerCase());
+    const author_name = (
+      currentUser?.full_name ||
+      fromAssignable?.full_name ||
+      email ||
+      'Korisnik'
+    ).trim();
+    setForm((prev) => ({
       ...prev,
       comments: [
         ...prev.comments,
-        { text: newComment.trim(), author: currentUserEmail || '', created_at: new Date().toISOString() },
+        {
+          text: newComment.trim(),
+          author: email,
+          author_name,
+          created_at: new Date().toISOString(),
+        },
       ],
     }));
     setNewComment('');
@@ -198,9 +230,11 @@ export default function TaskDetailModal({ task, users = [], currentUserEmail = '
 
             <CommentsSection
               form={form}
+              users={users}
               newComment={newComment}
               setNewComment={setNewComment}
               addComment={addComment}
+              readOnly={readOnly}
             />
           </div>
         </ModalScrollArea>
@@ -348,7 +382,7 @@ function ChecklistSection({
   );
 }
 
-function CommentsSection({ form, newComment, setNewComment, addComment }) {
+function CommentsSection({ form, users, newComment, setNewComment, addComment, readOnly }) {
   return (
     <div className="space-y-2">
       <Label className="flex items-center gap-1.5">
@@ -356,32 +390,44 @@ function CommentsSection({ form, newComment, setNewComment, addComment }) {
         Komentari
       </Label>
       {form.comments.map((comment, index) => (
-        <CommentItem key={index} comment={comment} />
+        <CommentItem key={index} comment={comment} users={users} />
       ))}
-      <div className="flex gap-2">
-        <Input
-          placeholder="Dodaj komentar..."
-          value={newComment}
-          onChange={e => setNewComment(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') addComment(); }}
-        />
-        <Button type="button" size="sm" variant="outline" onClick={addComment}>
-          <Plus className="w-4 h-4" />
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex gap-2">
+          <Input
+            placeholder="Dodaj komentar..."
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') addComment();
+            }}
+          />
+          <Button type="button" size="sm" variant="outline" onClick={addComment}>
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
-function CommentItem({ comment }) {
+function CommentItem({ comment, users }) {
+  const who = resolveCommentAuthorLabel(comment, users);
+  const email = (comment?.author || '').trim();
   return (
-    <div className="bg-slate-50 rounded-lg px-3 py-2 text-sm">
-      <p className="text-slate-700">{comment.text}</p>
-      {comment.created_at && (
-        <p className="text-xs text-slate-400 mt-1">
-          {format(new Date(comment.created_at), 'dd.MM.yyyy HH:mm')}
-        </p>
+    <div className="bg-slate-50 rounded-lg px-3 py-2 text-sm border border-slate-100">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 mb-1">
+        <p className="text-xs font-semibold text-slate-800">{who}</p>
+        {comment.created_at && (
+          <p className="text-[11px] text-slate-400 tabular-nums shrink-0">
+            {format(new Date(comment.created_at), 'dd.MM.yyyy HH:mm')}
+          </p>
+        )}
+      </div>
+      {email && who !== email && (
+        <p className="text-[11px] text-slate-500 mb-1">{email}</p>
       )}
+      <p className="text-slate-700 whitespace-pre-wrap break-words">{comment.text}</p>
     </div>
   );
 }

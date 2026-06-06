@@ -218,6 +218,7 @@ export default function TaskManager() {
         <TaskDetailModal
           task={selectedTask}
           users={users}
+          currentUser={currentUser}
           currentUserEmail={currentUser?.email}
           readOnly={!canEdit}
           onClose={() => setSelectedTask(null)}

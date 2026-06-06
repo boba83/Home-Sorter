@@ -90,14 +90,15 @@ export async function notifyOnTaskUpdated(prisma, existing, updated, actorUserId
       for (const comment of added) {
         const commentAuthor = (comment.author || actor.email || '').toLowerCase();
         const preview = (comment.text || '').slice(0, 100);
+        const authorLabel =
+          (comment.author_name && String(comment.author_name).trim()) ||
+          (comment.author && String(comment.author).toLowerCase() !== String(actor.email || '').toLowerCase()
+            ? comment.author
+            : actor.name);
         for (const email of assignees) {
           if (email.toLowerCase() === commentAuthor) continue;
           const userId = await userIdForEmail(prisma, email);
           if (!userId) continue;
-          const authorLabel =
-            comment.author && comment.author !== actor.email
-              ? comment.author
-              : actor.name;
           await createNotification(prisma, {
             userId,
             type: 'comment',
