@@ -6,9 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Building2, ArrowLeft, DoorOpen, Users, Plus, Edit2, Trash2, Loader2, UserCircle, Lock, MapPin } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { sortRoomsByNumber } from '@/lib/roomNumberSort';
+import { calculateRoomTaxEuro } from '@/lib/roomTax';
 
 const ALL_LOCATIONS = [
     'Sarti', 'Sykia', 'Klimataria', 'Kalamitsi', 'Porto Koufo',
@@ -37,7 +39,10 @@ export default function HouseDetails() {
     const [newRoomData, setNewRoomData] = useState({
         room_number: '',
         room_structure: '',
-        capacity: 1
+        capacity: 1,
+        stay_from: '',
+        stay_to: '',
+        tax_paid: false,
     });
 
     const { data: house, isLoading: houseLoading, error: houseError } = useQuery({
@@ -58,6 +63,11 @@ export default function HouseDetails() {
     const roomList = useMemo(
         () => sortRoomsByNumber(Array.isArray(rooms) ? rooms : []),
         [rooms],
+    );
+
+    const newRoomTaxPreview = useMemo(
+        () => calculateRoomTaxEuro(newRoomData.stay_from || '', newRoomData.stay_to || ''),
+        [newRoomData.stay_from, newRoomData.stay_to],
     );
 
     const { data: currentUser } = useQuery({
@@ -130,18 +140,35 @@ export default function HouseDetails() {
 
     const handleAddRoom = async () => {
         setIsSaving(true);
+        const convertToStorageFormat = (dateStr) => {
+            if (!dateStr) return '';
+            if (dateStr.includes('-')) {
+                const [year, month, day] = dateStr.split('-');
+                return `${day}.${month}.${year}`;
+            }
+            return dateStr;
+        };
         await base44.entities.Room.create({
             ...newRoomData,
+            stay_from: convertToStorageFormat(newRoomData.stay_from),
+            stay_to: convertToStorageFormat(newRoomData.stay_to),
             house_id: houseId,
             house_name: house.name,
             current_occupants: 0,
-            occupant_names: []
+            occupant_names: [],
         });
         queryClient.invalidateQueries({ queryKey: ['rooms', houseId] });
         queryClient.invalidateQueries({ queryKey: ['house', houseId] });
         setIsSaving(false);
         setIsAddingRoom(false);
-        setNewRoomData({ room_number: '', room_structure: '', capacity: 1 });
+        setNewRoomData({
+            room_number: '',
+            room_structure: '',
+            capacity: 1,
+            stay_from: '',
+            stay_to: '',
+            tax_paid: false,
+        });
     };
 
     const handleRoomUpdate = () => {
@@ -414,6 +441,60 @@ export default function HouseDetails() {
                                 value={newRoomData.capacity}
                                 onChange={(e) => setNewRoomData({...newRoomData, capacity: parseInt(e.target.value) || 1})}
                             />
+                        </div>
+                        <div className="space-y-2">
+                            <Label>Datum boravka</Label>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="newStayFrom" className="text-xs text-slate-600">
+                                        Od
+                                    </Label>
+                                    <Input
+                                        id="newStayFrom"
+                                        type="date"
+                                        value={newRoomData.stay_from || ''}
+                                        onChange={(e) =>
+                                            setNewRoomData({ ...newRoomData, stay_from: e.target.value })
+                                        }
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="newStayTo" className="text-xs text-slate-600">
+                                        Do
+                                    </Label>
+                                    <Input
+                                        id="newStayTo"
+                                        type="date"
+                                        value={newRoomData.stay_to || ''}
+                                        onChange={(e) =>
+                                            setNewRoomData({ ...newRoomData, stay_to: e.target.value })
+                                        }
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-blue-50 p-4 space-y-3">
+                            <div>
+                                <p className="text-xs font-medium uppercase text-slate-500">Taksa (boravišna)</p>
+                                <p className="text-2xl font-bold text-blue-600 tabular-nums">{newRoomTaxPreview} €</p>
+                                {newRoomData.stay_from && newRoomData.stay_to && newRoomTaxPreview === 0 && (
+                                    <p className="text-xs text-amber-700 mt-1">
+                                        Proverite datume (do mora biti posle od).
+                                    </p>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <Checkbox
+                                    id="newRoomTaxPaid"
+                                    checked={newRoomData.tax_paid === true}
+                                    onCheckedChange={(checked) =>
+                                        setNewRoomData({ ...newRoomData, tax_paid: !!checked })
+                                    }
+                                />
+                                <Label htmlFor="newRoomTaxPaid" className="cursor-pointer font-medium text-slate-700">
+                                    Taksa plaćena
+                                </Label>
+                            </div>
                         </div>
                     </div>
                     <DialogFooter>

@@ -12,6 +12,7 @@ import { base44 } from '@/api/base44Client';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { computeStructureAndNotesBlock, structureLooksInformative } from '@/lib/roomingDisplay';
+import { calculateRoomTaxEuro } from '@/lib/roomTax';
 
 function normalizeNames(raw) {
     if (Array.isArray(raw)) return raw.filter(Boolean);
@@ -112,27 +113,14 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
     const capacity = room.capacity || 1;
     const occupancyPercent = Math.min((occupancy / capacity) * 100, 100);
 
-    const calculateTax = (stayFrom, stayTo) => {
-        if (!stayFrom || !stayTo) return 0;
-        let fromDate, toDate;
-        if (stayFrom.includes('.')) {
-            const [day, month, year] = stayFrom.split('.');
-            fromDate = new Date(year, month - 1, day);
-        } else {
-            fromDate = new Date(stayFrom);
-        }
-        if (stayTo.includes('.')) {
-            const [day, month, year] = stayTo.split('.');
-            toDate = new Date(year, month - 1, day);
-        } else {
-            toDate = new Date(stayTo);
-        }
-        const timeDiff = toDate.getTime() - fromDate.getTime();
-        const nights = Math.round(timeDiff / (1000 * 60 * 60 * 24));
-        return Math.max(0, nights * 2);
-    };
-
-    const taxAmount = calculateTax(room.stay_from || '', room.stay_to || '');
+    const taxAmount = useMemo(
+        () => calculateRoomTaxEuro(room.stay_from || '', room.stay_to || ''),
+        [room.stay_from, room.stay_to],
+    );
+    const editTaxAmount = useMemo(
+        () => calculateRoomTaxEuro(editData.stay_from || '', editData.stay_to || ''),
+        [editData.stay_from, editData.stay_to],
+    );
 
     const handleSave = async () => {
         setIsSaving(true);
@@ -252,6 +240,9 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                 >
                                     TAX {room.tax_paid === true ? 'Paid' : 'Unpaid'}
                                 </span>
+                                {taxAmount > 0 && (
+                                    <span className="text-sm font-bold text-blue-600 tabular-nums">{taxAmount} €</span>
+                                )}
                                 {(canEdit || canDelete) && (
                                     <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                         {canEdit && (
@@ -474,11 +465,21 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                 <Calendar className="w-4 h-4 text-violet-600" />
                                 Datum boravka
                             </Label>
-                            {(room.stay_from || room.stay_to) && (
+                            {(room.stay_from || room.stay_to || editData.stay_from || editData.stay_to) && (
                                 <p className="text-xs text-slate-500">
-                                    Na kartici: {formatStayDate(room.stay_from) || '?'}
-                                    {' — '}
-                                    {formatStayDate(room.stay_to) || '?'}
+                                    {room.stay_from || room.stay_to ? (
+                                        <>
+                                            Na kartici: {formatStayDate(room.stay_from) || '?'}
+                                            {' — '}
+                                            {formatStayDate(room.stay_to) || '?'}
+                                        </>
+                                    ) : (
+                                        <>
+                                            Novi termin: {formatStayDate(editData.stay_from) || '?'}
+                                            {' — '}
+                                            {formatStayDate(editData.stay_to) || '?'}
+                                        </>
+                                    )}
                                 </p>
                             )}
                             <div className="grid grid-cols-2 gap-4">
@@ -580,7 +581,7 @@ export default function RoomCard({ room, onUpdate, onDelete, canEdit = true, can
                                 <motion.div className="flex items-center justify-between">
                                     <motion.div>
                                         <motion.div className="text-xs text-slate-500 font-medium uppercase">Amount</motion.div>
-                                        <motion.div className="text-3xl font-bold text-blue-600">{taxAmount} €</motion.div>
+                                        <motion.div className="text-3xl font-bold text-blue-600">{editTaxAmount} €</motion.div>
                                     </motion.div>
                                     <motion.div className="flex items-center gap-3">
                                         <Checkbox
