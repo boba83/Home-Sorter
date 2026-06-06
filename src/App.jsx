@@ -16,6 +16,7 @@ import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { getToken } from '@/api/client';
 import ErrorBoundary from '@/lib/ErrorBoundary';
+import { useNotificationPushBridge } from '@/hooks/useNotificationPushBridge';
 const { Pages, Layout, mainPage } = pagesConfig;
 const mainPageKey = mainPage ?? Object.keys(Pages)[0];
 const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
@@ -26,6 +27,7 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
 
 const AuthenticatedApp = () => {
   const { authReady, isLoadingAuth, isAuthenticated } = useAuth();
+  useNotificationPushBridge(Boolean(isAuthenticated && authReady));
 
   if (!getToken()) {
     return <Navigate to="/login" replace />;

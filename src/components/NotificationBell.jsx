@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { api } from '@/api/client';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 export default function NotificationBell({ variant = 'light' }) {
     const navigate = useNavigate();
@@ -134,6 +135,27 @@ export default function NotificationBell({ variant = 'light' }) {
                         onCheckedChange={setOnlyUnread}
                         className="data-[state=checked]:bg-blue-600"
                     />
+                </div>
+
+                <div className="px-4 py-2.5 border-b border-slate-100 bg-white text-xs text-slate-600 space-y-2">
+                    <p>
+                        <strong>Push na telefonu:</strong> u Manageru zadataka kliknite zvonce pored profila
+                        i dozvolite obaveštenja. Na telefonu dodajte sajt na početni ekran (Chrome/Safari).
+                    </p>
+                    {typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="w-full text-xs h-8"
+                            onClick={() => requestPermission()}
+                        >
+                            Uključi push obaveštenja
+                        </Button>
+                    )}
+                    {permission === 'granted' && (
+                        <p className="text-emerald-700 font-medium">Push je uključen (dok je aplikacija otvorena).</p>
+                    )}
                 </div>
 
                 <div className="overflow-y-auto flex-1 p-2 space-y-1.5 bg-slate-50/50">

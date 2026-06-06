@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { markExistingNotificationsAsSeenForPush } from '@/hooks/useNotificationPushBridge';
 
 export function usePushNotifications() {
   const [permission, setPermission] = useState(
@@ -15,6 +16,13 @@ export function usePushNotifications() {
     if (!('Notification' in window)) return 'denied';
     const result = await Notification.requestPermission();
     setPermission(result);
+    if (result === 'granted') {
+      try {
+        await markExistingNotificationsAsSeenForPush();
+      } catch {
+        /* ignore */
+      }
+    }
     return result;
   };
 

@@ -12,8 +12,8 @@ const LOGIN_ICON = '/home-sorter-login-icon.png';
 export default function Login() {
   const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin@home-sorter.local');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [apiOnline, setApiOnline] = useState(null);
@@ -159,15 +159,15 @@ export default function Login() {
             />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button
+            type="submit"
+            className="w-full bg-blue-900 text-white hover:bg-blue-950"
+            disabled={loading}
+          >
             {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
             Prijavi se
           </Button>
         </form>
-
-        <p className="text-xs text-slate-400 mt-6 text-center">
-          Podrazumevani admin: admin@home-sorter.local / admin123
-        </p>
       </div>
     </div>
   );
