@@ -10,6 +10,7 @@ import {
   Palette,
   Paperclip,
   File as FileIcon,
+  Pencil,
 } from 'lucide-react';
 import { api } from '@/api/client';
 import { format } from 'date-fns';
@@ -37,6 +38,15 @@ function resolveCommentAuthorLabel(comment, users) {
     if (u?.full_name) return u.full_name;
   }
   return email || 'Nepoznat autor';
+}
+
+function canUserEditComment(comment, currentUser, readOnly) {
+  if (readOnly) return false;
+  const role = String(currentUser?.role || '').toLowerCase();
+  if (role === 'admin') return true;
+  const me = (currentUser?.email || '').trim().toLowerCase();
+  const author = (comment?.author || '').trim().toLowerCase();
+  return Boolean(me && author && me === author);
 }
 
 export default function TaskDetailModal({
@@ -67,6 +77,8 @@ export default function TaskDetailModal({
   const [uploadBusy, setUploadBusy] = useState(0);
   const [uploadMsg, setUploadMsg] = useState('');
   const orphanIdsRef = useRef(new Set());
+  const [editingCommentIndex, setEditingCommentIndex] = useState(null);
+  const [editCommentDraft, setEditCommentDraft] = useState('');
 
   useEffect(
     () => () => {
@@ -189,6 +201,38 @@ export default function TaskDetailModal({
     setPendingAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const startEditComment = (index) => {
+    const c = form.comments[index];
+    if (!c || !canUserEditComment(c, currentUser, readOnly)) return;
+    setEditingCommentIndex(index);
+    setEditCommentDraft(c.text ?? '');
+  };
+
+  const cancelEditComment = () => {
+    setEditingCommentIndex(null);
+    setEditCommentDraft('');
+  };
+
+  const saveEditComment = () => {
+    if (editingCommentIndex === null) return;
+    const index = editingCommentIndex;
+    const draft = editCommentDraft.trim();
+    const orig = (form.comments[index]?.text || '').trim();
+    if (draft === orig) {
+      cancelEditComment();
+      return;
+    }
+    setForm((prev) => ({
+      ...prev,
+      comments: prev.comments.map((c, i) =>
+        i === index
+          ? { ...c, text: draft, edited_at: new Date().toISOString() }
+          : c,
+      ),
+    }));
+    cancelEditComment();
+  };
+
   const handleSave = () => {
     if (readOnly || !onSave) return;
     onSave({
@@ -300,6 +344,7 @@ export default function TaskDetailModal({
             <CommentsSection
               form={form}
               users={users}
+              currentUser={currentUser}
               newComment={newComment}
               setNewComment={setNewComment}
               addComment={addComment}
@@ -309,6 +354,12 @@ export default function TaskDetailModal({
               uploadMsg={uploadMsg}
               onPickCommentFiles={onPickCommentFiles}
               removePendingAttachment={removePendingAttachment}
+              editingCommentIndex={editingCommentIndex}
+              editCommentDraft={editCommentDraft}
+              setEditCommentDraft={setEditCommentDraft}
+              onStartEditComment={startEditComment}
+              onSaveEditComment={saveEditComment}
+              onCancelEditComment={cancelEditComment}
             />
           </div>
         </ModalScrollArea>
@@ -459,6 +510,7 @@ function ChecklistSection({
 function CommentsSection({
   form,
   users,
+  currentUser,
   newComment,
   setNewComment,
   addComment,
@@ -468,6 +520,12 @@ function CommentsSection({
   uploadMsg,
   onPickCommentFiles,
   removePendingAttachment,
+  editingCommentIndex,
+  editCommentDraft,
+  setEditCommentDraft,
+  onStartEditComment,
+  onSaveEditComment,
+  onCancelEditComment,
 }) {
   const fileInputRef = useRef(null);
   return (
@@ -477,7 +535,19 @@ function CommentsSection({
         Komentari
       </Label>
       {form.comments.map((comment, index) => (
-        <CommentItem key={index} comment={comment} users={users} />
+        <CommentItem
+          key={index}
+          comment={comment}
+          users={users}
+          currentUser={currentUser}
+          readOnly={readOnly}
+          isEditing={editingCommentIndex === index}
+          editDraft={editCommentDraft}
+          setEditDraft={setEditCommentDraft}
+          onStartEdit={() => onStartEditComment(index)}
+          onSaveEdit={onSaveEditComment}
+          onCancelEdit={onCancelEditComment}
+        />
       ))}
       {!readOnly && (
         <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2">
@@ -599,39 +669,108 @@ function CommentAttachmentView({ id, name, mime_type }) {
   );
 }
 
-function CommentItem({ comment, users }) {
+function CommentItem({
+  comment,
+  users,
+  currentUser,
+  readOnly,
+  isEditing,
+  editDraft,
+  setEditDraft,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+}) {
   const who = resolveCommentAuthorLabel(comment, users);
   const email = (comment?.author || '').trim();
   const attachments = Array.isArray(comment.attachments) ? comment.attachments : [];
+  const canEdit = canUserEditComment(comment, currentUser, readOnly);
+
   return (
     <div className="bg-slate-50 rounded-lg px-3 py-2 text-sm border border-slate-100">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 mb-1">
-        <p className="text-xs font-semibold text-slate-800">{who}</p>
-        {comment.created_at && (
-          <p className="text-[11px] text-slate-400 tabular-nums shrink-0">
-            {format(new Date(comment.created_at), 'dd.MM.yyyy HH:mm')}
-          </p>
-        )}
+      <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1 mb-1">
+        <p className="text-xs font-semibold text-slate-800 min-w-0">{who}</p>
+        <div className="flex flex-col items-end gap-0.5 shrink-0">
+          <div className="flex items-center gap-2">
+            {canEdit && !isEditing && (
+              <button
+                type="button"
+                onClick={onStartEdit}
+                className="text-slate-400 hover:text-blue-600 p-0.5 rounded"
+                title="Izmeni komentar"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {comment.created_at && (
+              <p className="text-[11px] text-slate-400 tabular-nums">
+                {format(new Date(comment.created_at), 'dd.MM.yyyy HH:mm')}
+              </p>
+            )}
+          </div>
+          {comment.edited_at && (
+            <p className="text-[10px] text-amber-800 font-medium tabular-nums">
+              Izmenjeno {format(new Date(comment.edited_at), 'dd.MM.yyyy HH:mm')}
+            </p>
+          )}
+        </div>
       </div>
       {email && who !== email && (
         <p className="text-[11px] text-slate-500 mb-1">{email}</p>
       )}
-      {comment.text ? (
-        <p className="text-slate-700 whitespace-pre-wrap break-words">{comment.text}</p>
-      ) : null}
-      {attachments.length > 0 && (
-        <div className="mt-2 space-y-2">
-          {attachments.map((att) =>
-            att?.id ? (
-              <CommentAttachmentView
-                key={att.id}
-                id={att.id}
-                name={att.name}
-                mime_type={att.mime_type}
-              />
-            ) : null,
+      {isEditing ? (
+        <div className="space-y-2 mt-1">
+          {attachments.length > 0 && (
+            <div className="space-y-2 rounded-md border border-dashed border-slate-200 bg-white/60 p-2">
+              <p className="text-[10px] font-medium text-slate-500">Prilozi</p>
+              {attachments.map((att) =>
+                att?.id ? (
+                  <CommentAttachmentView
+                    key={att.id}
+                    id={att.id}
+                    name={att.name}
+                    mime_type={att.mime_type}
+                  />
+                ) : null,
+              )}
+            </div>
           )}
+          <textarea
+            value={editDraft}
+            onChange={(e) => setEditDraft(e.target.value)}
+            rows={3}
+            className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            placeholder="Tekst komentara…"
+          />
+          <div className="flex gap-2 justify-end">
+            <Button type="button" size="sm" variant="outline" onClick={onCancelEdit}>
+              Otkaži
+            </Button>
+            <Button type="button" size="sm" onClick={onSaveEdit}>
+              Sačuvaj izmenu
+            </Button>
+          </div>
         </div>
+      ) : (
+        <>
+          {comment.text ? (
+            <p className="text-slate-700 whitespace-pre-wrap break-words">{comment.text}</p>
+          ) : null}
+          {attachments.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {attachments.map((att) =>
+                att?.id ? (
+                  <CommentAttachmentView
+                    key={att.id}
+                    id={att.id}
+                    name={att.name}
+                    mime_type={att.mime_type}
+                  />
+                ) : null,
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
