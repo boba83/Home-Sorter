@@ -1,5 +1,17 @@
-import React, { useState } from 'react';
-import { Trash2, Plus, CheckSquare, MessageSquare, Calendar, Tag, User, Palette } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Trash2,
+  Plus,
+  CheckSquare,
+  MessageSquare,
+  Calendar,
+  Tag,
+  User,
+  Palette,
+  Paperclip,
+  File as FileIcon,
+} from 'lucide-react';
+import { api } from '@/api/client';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +63,19 @@ export default function TaskDetailModal({
   });
   const [newChecklist, setNewChecklist] = useState('');
   const [newComment, setNewComment] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState([]);
+  const [uploadBusy, setUploadBusy] = useState(0);
+  const [uploadMsg, setUploadMsg] = useState('');
+  const orphanIdsRef = useRef(new Set());
+
+  useEffect(
+    () => () => {
+      orphanIdsRef.current.forEach((id) => {
+        api.tasks.deleteCommentFile(id).catch(() => {});
+      });
+    },
+    [],
+  );
 
   const toggleLabel = (label) => {
     setForm(prev => ({
@@ -96,7 +121,7 @@ export default function TaskDetailModal({
   };
 
   const addComment = () => {
-    if (!newComment.trim()) return;
+    if (!newComment.trim() && !pendingAttachments.length) return;
     const email = (currentUser?.email || currentUserEmail || '').trim();
     const fromAssignable = users.find((u) => (u.email || '').toLowerCase() === email.toLowerCase());
     const author_name = (
@@ -105,6 +130,13 @@ export default function TaskDetailModal({
       email ||
       'Korisnik'
     ).trim();
+    pendingAttachments.forEach((a) => orphanIdsRef.current.delete(a.id));
+    const attachments = pendingAttachments.map(({ id, name, mime_type, url }) => ({
+      id,
+      name,
+      mime_type,
+      url,
+    }));
     setForm((prev) => ({
       ...prev,
       comments: [
@@ -114,10 +146,47 @@ export default function TaskDetailModal({
           author: email,
           author_name,
           created_at: new Date().toISOString(),
+          ...(attachments.length ? { attachments } : {}),
         },
       ],
     }));
     setNewComment('');
+    setPendingAttachments([]);
+  };
+
+  const onPickCommentFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    setUploadMsg('');
+    for (const file of files) {
+      setUploadBusy((n) => n + 1);
+      try {
+        const r = await api.tasks.uploadCommentFile(task.id, file);
+        orphanIdsRef.current.add(r.id);
+        setPendingAttachments((prev) => [
+          ...prev,
+          { id: r.id, name: r.name, mime_type: r.mime_type, url: r.url },
+        ]);
+      } catch (err) {
+        setUploadMsg(err?.message || 'Upload nije uspeo');
+      } finally {
+        setUploadBusy((n) => Math.max(0, n - 1));
+      }
+    }
+  };
+
+  const removePendingAttachment = async (index) => {
+    const a = pendingAttachments[index];
+    if (a?.id) {
+      try {
+        await api.tasks.deleteCommentFile(a.id);
+      } catch {
+        /* ignore */
+      }
+      orphanIdsRef.current.delete(a.id);
+    }
+    setPendingAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSave = () => {
@@ -235,6 +304,11 @@ export default function TaskDetailModal({
               setNewComment={setNewComment}
               addComment={addComment}
               readOnly={readOnly}
+              pendingAttachments={pendingAttachments}
+              uploadBusy={uploadBusy}
+              uploadMsg={uploadMsg}
+              onPickCommentFiles={onPickCommentFiles}
+              removePendingAttachment={removePendingAttachment}
             />
           </div>
         </ModalScrollArea>
@@ -382,7 +456,20 @@ function ChecklistSection({
   );
 }
 
-function CommentsSection({ form, users, newComment, setNewComment, addComment, readOnly }) {
+function CommentsSection({
+  form,
+  users,
+  newComment,
+  setNewComment,
+  addComment,
+  readOnly,
+  pendingAttachments,
+  uploadBusy,
+  uploadMsg,
+  onPickCommentFiles,
+  removePendingAttachment,
+}) {
+  const fileInputRef = useRef(null);
   return (
     <div className="space-y-2">
       <Label className="flex items-center gap-1.5">
@@ -393,27 +480,129 @@ function CommentsSection({ form, users, newComment, setNewComment, addComment, r
         <CommentItem key={index} comment={comment} users={users} />
       ))}
       {!readOnly && (
-        <div className="flex gap-2">
-          <Input
-            placeholder="Dodaj komentar..."
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') addComment();
-            }}
-          />
-          <Button type="button" size="sm" variant="outline" onClick={addComment}>
-            <Plus className="w-4 h-4" />
-          </Button>
+        <div className="space-y-2 rounded-lg border border-slate-200 bg-white p-2">
+          {pendingAttachments.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {pendingAttachments.map((a, i) => (
+                <span
+                  key={a.id}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 max-w-full"
+                >
+                  <FileIcon className="w-3.5 h-3.5 shrink-0 text-slate-500" />
+                  <span className="truncate min-w-0">{a.name}</span>
+                  <button
+                    type="button"
+                    className="text-slate-400 hover:text-red-600 shrink-0"
+                    onClick={() => removePendingAttachment(i)}
+                    aria-label="Ukloni prilog"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {uploadMsg ? <p className="text-xs text-red-600">{uploadMsg}</p> : null}
+          <div className="flex gap-2 flex-wrap items-stretch">
+            <Input
+              placeholder="Tekst komentara (opciono ako imate prilog)…"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) addComment();
+              }}
+              className="flex-1 min-w-[8rem]"
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              multiple
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar,.csv"
+              onChange={onPickCommentFiles}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadBusy > 0}
+              title="Priloži fajl ili sliku"
+            >
+              <Paperclip className="w-4 h-4" />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={addComment}
+              disabled={uploadBusy > 0 || (!newComment.trim() && !pendingAttachments.length)}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+          {uploadBusy > 0 ? (
+            <p className="text-xs text-slate-500">Slanje priloga…</p>
+          ) : null}
         </div>
       )}
     </div>
   );
 }
 
+function CommentAttachmentView({ id, name, mime_type }) {
+  const isImg = String(mime_type || '').startsWith('image/');
+  const [blobUrl, setBlobUrl] = useState(null);
+  const [loadErr, setLoadErr] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = null;
+    (async () => {
+      try {
+        const blob = await api.tasks.fetchCommentAttachmentBlob(id);
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      } catch {
+        if (!cancelled) setLoadErr(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [id]);
+
+  if (loadErr) {
+    return <p className="text-xs text-red-600">Prilog se ne može učitati.</p>;
+  }
+  if (!blobUrl) {
+    return <p className="text-xs text-slate-400">Učitavanje priloga…</p>;
+  }
+  if (isImg) {
+    return (
+      <a href={blobUrl} download={name} className="block max-w-full">
+        <img src={blobUrl} alt={name || 'Prilog'} className="max-h-52 max-w-full rounded border border-slate-200 object-contain" />
+      </a>
+    );
+  }
+  return (
+    <a
+      href={blobUrl}
+      download={name || 'prilog'}
+      className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-50"
+    >
+      <FileIcon className="w-4 h-4 shrink-0" />
+      <span className="truncate max-w-[14rem]">{name || 'Preuzmi fajl'}</span>
+    </a>
+  );
+}
+
 function CommentItem({ comment, users }) {
   const who = resolveCommentAuthorLabel(comment, users);
   const email = (comment?.author || '').trim();
+  const attachments = Array.isArray(comment.attachments) ? comment.attachments : [];
   return (
     <div className="bg-slate-50 rounded-lg px-3 py-2 text-sm border border-slate-100">
       <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5 mb-1">
@@ -427,7 +616,23 @@ function CommentItem({ comment, users }) {
       {email && who !== email && (
         <p className="text-[11px] text-slate-500 mb-1">{email}</p>
       )}
-      <p className="text-slate-700 whitespace-pre-wrap break-words">{comment.text}</p>
+      {comment.text ? (
+        <p className="text-slate-700 whitespace-pre-wrap break-words">{comment.text}</p>
+      ) : null}
+      {attachments.length > 0 && (
+        <div className="mt-2 space-y-2">
+          {attachments.map((att) =>
+            att?.id ? (
+              <CommentAttachmentView
+                key={att.id}
+                id={att.id}
+                name={att.name}
+                mime_type={att.mime_type}
+              />
+            ) : null,
+          )}
+        </div>
+      )}
     </div>
   );
 }

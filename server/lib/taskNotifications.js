@@ -90,6 +90,9 @@ export async function notifyOnTaskUpdated(prisma, existing, updated, actorUserId
       for (const comment of added) {
         const commentAuthor = (comment.author || actor.email || '').toLowerCase();
         const preview = (comment.text || '').slice(0, 100);
+        const att = Array.isArray(comment.attachments) ? comment.attachments : [];
+        const attHint =
+          att.length > 0 ? ` [+${att.length} prilog${att.length === 1 ? '' : 'a'}]` : '';
         const authorLabel =
           (comment.author_name && String(comment.author_name).trim()) ||
           (comment.author && String(comment.author).toLowerCase() !== String(actor.email || '').toLowerCase()
@@ -105,7 +108,7 @@ export async function notifyOnTaskUpdated(prisma, existing, updated, actorUserId
             severity: urgent ? 'urgent' : 'normal',
             taskId: updated.id,
             title: urgent ? 'HITNO: Novi komentar' : 'Novi komentar na zadatku',
-            message: `${authorLabel}: "${preview}" — ${updated.title}`,
+            message: `${authorLabel}: "${preview}${attHint}" — ${updated.title}`,
           });
         }
       }

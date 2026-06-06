@@ -434,6 +434,35 @@ export const api = {
       });
     },
   },
+  tasks: {
+    uploadCommentFile(taskId, file) {
+      const fd = new FormData();
+      fd.append('file', file);
+      return request(`/tasks/${encodeURIComponent(taskId)}/comment-files`, { method: 'POST', body: fd });
+    },
+    fetchCommentAttachmentBlob(attachmentId) {
+      const token = getToken();
+      return fetch(withCacheBust(buildApiUrl(`/tasks/comment-files/${encodeURIComponent(attachmentId)}`)), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        cache: 'no-store',
+      }).then(async (res) => {
+        if (!res.ok) {
+          let msg = 'Prilog nije mogao biti učitan';
+          try {
+            const j = await res.json();
+            if (j?.message) msg = j.message;
+          } catch {
+            /* ignore */
+          }
+          throw new Error(msg);
+        }
+        return res.blob();
+      });
+    },
+    deleteCommentFile(attachmentId) {
+      return request(`/tasks/comment-files/${encodeURIComponent(attachmentId)}`, { method: 'DELETE' });
+    },
+  },
   auth,
   integrations,
   appLogs: {

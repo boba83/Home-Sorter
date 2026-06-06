@@ -55,6 +55,7 @@ import {
   isAdmin,
   isViewer,
   canEditTasks,
+  canUseTasks,
   loadUserAccess,
   hasAllHousesAccess,
   houseWhereForUser,
@@ -67,6 +68,13 @@ import {
 import { serializeInfoFolder, serializeInfoFile } from './lib/serializeInfo.js';
 import { saveInfoFile, removeStoredFile, resolveStoredPath } from './lib/infoStorage.js';
 import { normalizeInfoFolderColor } from './lib/infoColors.js';
+import {
+  saveTaskCommentAttachment,
+  readTaskCommentMeta,
+  resolveTaskCommentBinPath,
+  deleteTaskCommentAttachment,
+  isValidAttachmentId,
+} from './lib/taskCommentFiles.js';
 
 const prisma = new PrismaClient();
 const app = express();
@@ -522,6 +530,78 @@ app.put('/api/tasks/:id', authMiddleware, editorOnly, async (req, res) => {
     console.error('notifyOnTaskUpdated', e);
   }
   res.json(serializeTask(task));
+});
+
+app.post(
+  '/api/tasks/:taskId/comment-files',
+  authMiddleware,
+  editorOnly,
+  upload.single('file'),
+  async (req, res) => {
+    try {
+      const { taskId } = req.params;
+      const task = await prisma.task.findUnique({ where: { id: taskId } });
+      if (!task) return res.status(404).json({ message: 'Zadatak nije pronađen' });
+      if (!req.file?.buffer) return res.status(400).json({ message: 'Nema fajla' });
+      const meta = await saveTaskCommentAttachment(req.file.buffer, {
+        taskId,
+        userId: req.userId,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+      });
+      res.status(201).json({
+        id: meta.id,
+        name: meta.originalName,
+        mime_type: meta.mimeType,
+        url: `/api/tasks/comment-files/${meta.id}`,
+      });
+    } catch (e) {
+      console.error('comment-files upload', e);
+      res.status(500).json({ message: 'Upload nije uspeo' });
+    }
+  },
+);
+
+app.get('/api/tasks/comment-files/:id', authMiddleware, async (req, res) => {
+  try {
+    if (!canUseTasks(req.userRole)) {
+      return res.status(403).json({ message: 'Nemate pristup' });
+    }
+    const { id } = req.params;
+    if (!isValidAttachmentId(id)) return res.status(400).json({ message: 'Neispravan id' });
+    const meta = await readTaskCommentMeta(id);
+    if (!meta) return res.status(404).json({ message: 'Prilog nije pronađen' });
+    const abs = resolveTaskCommentBinPath(id);
+    if (!abs) return res.status(400).end();
+    const buf = await fs.readFile(abs);
+    const inline = String(meta.mimeType || '').startsWith('image/');
+    res.setHeader(
+      'Content-Disposition',
+      `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(meta.originalName || 'file')}`,
+    );
+    res.setHeader('Content-Type', meta.mimeType || 'application/octet-stream');
+    res.send(buf);
+  } catch (e) {
+    console.error('comment-files get', e);
+    res.status(500).end();
+  }
+});
+
+app.delete('/api/tasks/comment-files/:id', authMiddleware, editorOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isValidAttachmentId(id)) return res.status(400).json({ message: 'Neispravan id' });
+    const meta = await readTaskCommentMeta(id);
+    if (!meta) return res.status(404).end();
+    if (meta.uploadedBy !== req.userId && !isAdmin(req.userRole)) {
+      return res.status(403).json({ message: 'Možete obrisati samo svoje priloge' });
+    }
+    await deleteTaskCommentAttachment(id);
+    res.status(204).end();
+  } catch (e) {
+    console.error('comment-files delete', e);
+    res.status(500).json({ message: 'Brisanje nije uspelo' });
+  }
 });
 
 // ——— Notifications ———
