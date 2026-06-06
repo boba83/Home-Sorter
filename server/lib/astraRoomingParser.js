@@ -24,6 +24,8 @@ const PRIMARY_NO_VOUCHER = new RegExp(
 );
 
 const CONTINUATION = new RegExp(`^\\d+\\s+(${SEX_ALT})\\s+(.+)$`, 'i');
+/** Beba (0–2): u PDF-u često samo „INF PREZIME Ime“ bez rednog broja u prvoj koloni. */
+const STANDALONE_INF = /^\s*INF\s+(.+)$/i;
 const PHONE_TAIL = /(\d{2,3}\/\d{6,})\s*$/;
 const SKIP_NAME = /^(?:---+|X{3,})/i;
 const SKIP_LINE =
@@ -338,6 +340,31 @@ function isContinuationLine(line) {
   return true;
 }
 
+/** INF bez rednog broja — nastavak iste sobe (beba 0–2). */
+function tryAppendStandaloneInfant(line, buf, entries, currentHotel) {
+  const m = line.match(STANDALONE_INF);
+  if (!m) return false;
+  let namePart = cleanGuestName(m[1]);
+  namePart = namePart.replace(/\s+(?:BUS\s+PAK|AUTOBUS)\s*$/i, '').trim();
+  if (SKIP_NAME.test(namePart) || SKIP_NAME.test(namePart.split(/\s+/)[0] || '')) return true;
+  const occ = formatOccupant('INF', namePart);
+  if (buf) {
+    buf.occupants.push(occ);
+    return true;
+  }
+  if (entries.length > 0) {
+    const last = entries[entries.length - 1];
+    if (last && last.house_name === currentHotel) {
+      last.occupant_names.push(occ);
+      last.number_of_persons = last.occupant_names.length;
+      const guess = guessCapacityFromStructure(last.room_structure);
+      last.capacity = Math.max(last.capacity || 1, guess ?? last.number_of_persons);
+      return true;
+    }
+  }
+  return true;
+}
+
 function stripPhoneFromNotesText(notes, phone) {
   if (!notes?.trim() || !phone?.trim()) return (notes || '').trim();
   let n = notes.trim();
@@ -494,6 +521,8 @@ export function parseAstraRoomingListLines(rawLines, defaultLocation) {
         const guess = guessCapacityFromStructure(last.room_structure);
         last.capacity = Math.max(last.capacity || 1, guess ?? last.occupant_names.length);
       }
+    } else if (tryAppendStandaloneInfant(line, buf, entries, currentHotel)) {
+      continue;
     }
   }
 
