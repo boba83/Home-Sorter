@@ -16,6 +16,7 @@ export default function NotificationBell({ variant = 'light' }) {
     const queryClient = useQueryClient();
     const [open, setOpen] = useState(false);
     const [onlyUnread, setOnlyUnread] = useState(false);
+    const { permission, requestPermission } = usePushNotifications();
 
     const isDark = variant === 'dark';
 
