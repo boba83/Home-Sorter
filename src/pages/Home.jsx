@@ -18,7 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ErrorBoundary from '@/lib/ErrorBoundary';
 import { sortRoomsByNumber } from '@/lib/roomNumberSort';
 import {
-    roomMatchesStayPeriod,
+    roomMatchesStayShiftPeriod,
     formatStayDateDisplay,
     escapeXmlText,
 } from '@/lib/stayDateRange';
@@ -144,7 +144,7 @@ export default function Home() {
         });
         if (periodOnly && stayPeriodActive) {
             rooms = rooms.filter((room) =>
-                roomMatchesStayPeriod(room, stayPeriodFrom, stayPeriodTo),
+                roomMatchesStayShiftPeriod(room, stayPeriodFrom, stayPeriodTo),
             );
         }
         return sortRoomsByNumber(rooms);
@@ -344,16 +344,29 @@ export default function Home() {
     };
 
     const handleExportXML = (location) => {
-        const locationHouses = userFilteredHouses.filter(
-            (h) => (h.location || '').trim() === location,
-        );
-        const xml = buildHousesExportXml(locationHouses, { label: location, periodOnly: false });
-        downloadXmlExport(xml, `${location}_smena_${new Date().toISOString().slice(0, 10)}.xml`);
+        const houses = stayPeriodActive
+            ? filteredHouses.filter((h) => (h.location || '').trim() === location)
+            : userFilteredHouses.filter((h) => (h.location || '').trim() === location);
+        if (houses.length === 0) {
+            alert('Nema kuća/soba za izvoz za ovu lokaciju u izabranom periodu.');
+            return;
+        }
+        const label = stayPeriodActive
+            ? `${location} — smena ${formatStayDateDisplay(stayPeriodFrom)}–${formatStayDateDisplay(stayPeriodTo)}`
+            : location;
+        const xml = buildHousesExportXml(houses, {
+            label,
+            periodOnly: stayPeriodActive,
+        });
+        const datePart = stayPeriodActive
+            ? `${stayPeriodFrom}_${stayPeriodTo}`.replace(/-/g, '')
+            : new Date().toISOString().slice(0, 10);
+        downloadXmlExport(xml, `${location}_smena_${datePart}.xml`);
     };
 
     const handleExportPeriodResults = () => {
-        if (filteredHouses.length === 0) {
-            alert('Nema kuća/soba za izvoz u izabranom periodu.');
+        if (periodMatchRooms.length === 0) {
+            alert('Nema soba za izvoz u izabranom periodu smene.');
             return;
         }
         const xml = buildHousesExportXml(filteredHouses, {
@@ -372,6 +385,44 @@ export default function Home() {
 
     const handleDeleteSelected = async () => {
         if (selectedHouses.size === 0) return;
+
+        if (stayPeriodActive) {
+            const periodRooms = [];
+            for (const houseId of selectedHouses) {
+                const hid = String(houseId);
+                for (const room of roomList) {
+                    const rid = room?.house_id ?? room?.houseId;
+                    if (rid == null || String(rid) !== hid) continue;
+                    if (roomMatchesStayShiftPeriod(room, stayPeriodFrom, stayPeriodTo)) {
+                        periodRooms.push(room);
+                    }
+                }
+            }
+            if (periodRooms.length === 0) {
+                alert('Nema soba koje odgovaraju ovoj smeni među izabranim kućama.');
+                return;
+            }
+            const toLabel = formatStayDateDisplay(stayPeriodTo);
+            const confirmed = confirm(
+                `Biće obrisano samo ${periodRooms.length} soba čiji boravak ulazi u smenu i završava se do ${toLabel} (uključivo). Sobe koje traju posle tog datuma i cele kuće se NE brišu. Nastaviti?`,
+            );
+            if (!confirmed) return;
+
+            setIsDeleting(true);
+            try {
+                for (const room of periodRooms) {
+                    await base44.entities.Room.delete(room.id);
+                }
+                setSelectedHouses(new Set());
+                await queryClient.invalidateQueries({ queryKey: ['houses'] });
+                await queryClient.invalidateQueries({ queryKey: ['rooms'] });
+            } catch (error) {
+                alert('Greška pri brisanju: ' + error.message);
+            } finally {
+                setIsDeleting(false);
+            }
+            return;
+        }
 
         const count = selectedHouses.size;
         const confirmed = confirm(
@@ -538,7 +589,7 @@ export default function Home() {
                                     Obriši period
                                 </Button>
                             )}
-                            {stayPeriodActive && canManageHouses && filteredHouses.length > 0 && (
+                            {stayPeriodActive && periodMatchRooms.length > 0 && (
                                 <Button
                                     type="button"
                                     variant="outline"
@@ -547,7 +598,7 @@ export default function Home() {
                                     className="gap-2 border-emerald-300 text-emerald-800 hover:bg-emerald-50"
                                 >
                                     <FileDown className="w-4 h-4" />
-                                    Izvezi XML ({filteredHouses.length} kuća)
+                                    Izvezi XML ({filteredHouses.length} kuća, {periodMatchRooms.length} soba)
                                 </Button>
                             )}
                         </div>
@@ -559,19 +610,24 @@ export default function Home() {
                                 </strong>
                                 {' · '}
                                 <strong>{filteredHouses.length}</strong> kuća,{' '}
-                                <strong>{periodMatchRooms.length}</strong> soba sa preklapajućim boravkom
+                                <strong>{periodMatchRooms.length}</strong> soba u smeni (boravak se završava do{' '}
+                                {formatStayDateDisplay(stayPeriodTo)}, uključuje i one koje počnu posle početka smene)
                                 {filteredHouses.length === 0 && (
                                     <span className="text-amber-800">
                                         {' '}
-                                        — nema soba sa datumima u tom intervalu
+                                        — nema soba sa punim datumima koje odgovaraju ovim pravilima
                                     </span>
                                 )}
                             </p>
                         )}
                         {!stayPeriodActive && (
                             <p className="mt-2 text-xs text-violet-800/80">
-                                Izaberite oba datuma — prikazuju se kuće i sobe čiji boravak preklapa period.
-                                Zatim izvezite XML i po potrebi obrišite izabrane kuće (admin).
+                                Izaberite oba datuma smene (od–do). Prikazuju se kuće koje imaju bar jednu sobu sa
+                                boravkom koji <strong>preklapa smenu</strong> i čiji se boravak <strong>završava do datuma „Do“</strong>{' '}
+                                (npr. i 02.06–12.06); <strong>ne ulaze</strong> sobe koje traju posle tog datuma (npr. do 17.06).
+                                „Obriši period“ uklanja pretragu. Sa izabranim kućama, „Obriši“ u režimu smene briše{' '}
+                                <strong>samo te sobe</strong>, ne celu kuću — sobe koje ostaju posle datuma „Do“ se ne diraju.
+                                Van smene, brisanje i dalje briše cele izabrane kuće.
                             </p>
                         )}
                     </div>
@@ -632,7 +688,9 @@ export default function Home() {
                                         className="ml-auto gap-2"
                                     >
                                         <Trash2 className="w-4 h-4" />
-                                        Obriši ({selectedHouses.size})
+                                        {stayPeriodActive
+                                            ? `Obriši sobe u smeni (${selectedHouses.size})`
+                                            : `Obriši (${selectedHouses.size})`}
                                     </Button>
                                 </>
                             )}
@@ -814,7 +872,9 @@ export default function Home() {
                                 className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
                             >
                                 <FileDown className="w-4 h-4" />
-                                Izvezi XML (smena)
+                                {stayPeriodActive
+                                    ? `Izvezi XML — ova lokacija u smeni`
+                                    : 'Izvezi XML (smena)'}
                             </Button>
                             )}
                         </div>
