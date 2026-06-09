@@ -16,46 +16,15 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [apiOnline, setApiOnline] = useState(null);
 
   React.useEffect(() => {
     if (isAuthenticated) navigate('/', { replace: true });
   }, [isAuthenticated, navigate]);
 
+  /** Tihi „warm-up“ (npr. Render cold start) — bez UI statusa da korisnik ne vidi lažne „server ne radi“. */
   React.useEffect(() => {
-    let cancelled = false;
-    const maxAttempts = 60;
-    let attempt = 0;
-
-    async function pingOnce() {
-      const controller = new AbortController();
-      const t = setTimeout(() => controller.abort(), 4000);
-      try {
-        const r = await fetch(buildApiUrl('/health'), { signal: controller.signal, cache: 'no-store' });
-        return r.ok;
-      } catch {
-        return false;
-      } finally {
-        clearTimeout(t);
-      }
-    }
-
-    async function poll() {
-      while (!cancelled && attempt < maxAttempts) {
-        if (await pingOnce()) {
-          if (!cancelled) setApiOnline(true);
-          return;
-        }
-        attempt += 1;
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-      if (!cancelled) setApiOnline(false);
-    }
-
-    poll();
-    return () => {
-      cancelled = true;
-    };
+    const url = buildApiUrl('/health');
+    void fetch(url, { cache: 'no-store', credentials: 'omit' }).catch(() => {});
   }, []);
 
   const handleSubmit = async (e) => {
@@ -89,51 +58,6 @@ export default function Login() {
             </p>
           </div>
         </div>
-
-        {apiOnline === null && (
-          <p className="mb-4 text-center text-xs text-slate-500">Proveravam da li API radi (do ~1 min)…</p>
-        )}
-
-        {apiOnline === false && (
-          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <p className="font-medium">API server nije dostupan</p>
-            <p className="mt-2 text-amber-800/90">
-              Provera API-ja:{' '}
-              <a
-                href={(() => {
-                  const p = buildApiUrl('/health');
-                  return p.startsWith('http') ? p : `${window.location.origin}${p}`;
-                })()}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-medium text-amber-900 underline break-all"
-              >
-                {(() => {
-                  const p = buildApiUrl('/health');
-                  return p.startsWith('http') ? p : `${window.location.origin}${p}`;
-                })()}
-              </a>{' '}
-              — treba JSON <code className="rounded bg-amber-100 px-1">{`{"ok":true}`}</code>.
-            </p>
-            {import.meta.env.PROD && !import.meta.env.VITE_API_URL && (
-              <p className="mt-2 text-amber-800">
-                Na Vercelu dodajte env <code className="rounded bg-amber-100 px-1">VITE_API_URL</code> ={' '}
-                <code className="rounded bg-amber-100 px-1">https://api.astratravel-sitonija.com</code> i uradite Redeploy.
-              </p>
-            )}
-            {import.meta.env.DEV && (
-              <>
-                <p className="mt-1 text-amber-800">
-                  Lokalno: pokrenite{' '}
-                  <code className="rounded bg-amber-100 px-1">npm run dev:all</code> i sačekajte API na portu 3001.
-                </p>
-                <p className="mt-2 text-amber-800/90">
-                  Ako je port zauzet: <code className="rounded bg-amber-100 px-1">npm run dev:all:clean</code>
-                </p>
-              </>
-            )}
-          </div>
-        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">

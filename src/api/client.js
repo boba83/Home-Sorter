@@ -27,7 +27,11 @@ async function parseJsonResponse(res) {
 }
 
 const REQUEST_TIMEOUT_MS = 20000;
-const AUTH_TIMEOUT_MS = 10000;
+/** Ostali /auth pozivi (npr. /auth/me) */
+const AUTH_TIMEOUT_MS = 20000;
+/** Prijava — Render cold start često >10s; ne želimo lažni timeout. */
+const AUTH_LOGIN_TIMEOUT_MS = 60000;
+const AUTH_TRANSIENT_RETRIES = 2;
 
 /** Produkcija (Vercel): VITE_API_URL=https://api.astratravel-sitonija.com — lokalno prazno → Vite proxy /api */
 const API_BASE = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -38,14 +42,44 @@ export function buildApiUrl(path) {
   return API_BASE ? `${API_BASE}${apiPath}` : apiPath;
 }
 
+function isTransientNetworkError(e) {
+  if (!e) return false;
+  if (e.name === 'AbortError') return true;
+  const msg = String(e.message || '');
+  if (/failed to fetch|networkerror|load failed|aborted/i.test(msg)) return true;
+  return false;
+}
+
+function connectionErrorMessage() {
+  return import.meta.env.DEV
+    ? 'Ne mogu da se povežem sa serverom. Pokrenite API: npm run dev:server (port 3001).'
+    : 'Ne mogu da se povežem sa serverom. Proverite internet i pokušajte ponovo za nekoliko sekundi.';
+}
+
+function timeoutErrorMessage() {
+  return import.meta.env.DEV
+    ? 'Server ne odgovara na vreme. Proverite da li API radi (npm run dev:server ili npm run dev:all).'
+    : 'Server trenutno ne odgovara na vreme (često posle dužeg mirovanja). Sačekajte nekoliko sekundi i pokušajte ponovo.';
+}
+
 async function request(path, options = {}, attempt = 0) {
-  const timeoutMs = path.startsWith('/auth') ? AUTH_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+  const authRetry = options.__authRetry ?? 0;
+  const fetchOptions = { ...options };
+  delete fetchOptions.__authRetry;
+
+  const timeoutMs =
+    path === '/auth/login'
+      ? AUTH_LOGIN_TIMEOUT_MS
+      : path.startsWith('/auth')
+        ? AUTH_TIMEOUT_MS
+        : REQUEST_TIMEOUT_MS;
+
   const headers = {
     'Cache-Control': 'no-cache, no-store, must-revalidate',
     Pragma: 'no-cache',
-    ...options.headers,
+    ...fetchOptions.headers,
   };
-  if (!(options.body instanceof FormData)) {
+  if (!(fetchOptions.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
   const token = getToken();
@@ -53,7 +87,7 @@ async function request(path, options = {}, attempt = 0) {
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  const { signal: _ignored, ...restOptions } = options;
+  const { signal: _ignored, ...restOptions } = fetchOptions;
 
   let res;
   try {
@@ -64,16 +98,20 @@ async function request(path, options = {}, attempt = 0) {
       signal: controller.signal,
     });
   } catch (e) {
+    const canRetryAuth =
+      (path === '/auth/login' || path === '/auth/me') &&
+      authRetry < AUTH_TRANSIENT_RETRIES &&
+      isTransientNetworkError(e);
+    if (canRetryAuth) {
+      await new Promise((r) => setTimeout(r, 1200 * (authRetry + 1)));
+      return request(path, { ...fetchOptions, __authRetry: authRetry + 1 }, attempt);
+    }
     if (e?.name === 'AbortError') {
-      const err = new Error(
-        'Server ne odgovara na vreme. Proverite da li API radi (npm run dev:server ili npm run dev:all).',
-      );
+      const err = new Error(timeoutErrorMessage());
       err.status = 0;
       throw err;
     }
-    const err = new Error(
-      'Ne mogu da se povežem sa serverom. Pokrenite API: npm run dev:server (port 3001).',
-    );
+    const err = new Error(connectionErrorMessage());
     err.status = 0;
     throw err;
   } finally {
@@ -81,7 +119,7 @@ async function request(path, options = {}, attempt = 0) {
   }
 
   if (res.status === 304 && attempt < 2) {
-    return request(path, options, attempt + 1);
+    return request(path, { ...fetchOptions, __authRetry: authRetry }, attempt + 1);
   }
 
   if (!res.ok) {
