@@ -1312,7 +1312,7 @@ app.get('/api/info/files/:id/download', authMiddleware, asyncRoute(async (req, r
   }
 }));
 
-app.delete('/api/info/files/:id', authMiddleware, adminOnly, asyncRoute(async (req, res) => {
+app.delete('/api/info/files/:id', authMiddleware, editorOnly, asyncRoute(async (req, res) => {
   const record = await prisma.infoFile.findUnique({ where: { id: req.params.id } });
   if (!record) return res.status(404).json({ message: 'Fajl nije pronađen' });
 
@@ -1320,6 +1320,70 @@ app.delete('/api/info/files/:id', authMiddleware, adminOnly, asyncRoute(async (r
   await prisma.infoFile.delete({ where: { id: record.id } });
   res.status(204).end();
 }));
+
+app.patch('/api/info/files/:id', authMiddleware, editorOnly, asyncRoute(async (req, res) => {
+  const existing = await prisma.infoFile.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ message: 'Fajl nije pronađen' });
+
+  const name = String(req.body?.name || '').trim();
+  if (!name) return res.status(400).json({ message: 'Unesite naziv fajla' });
+
+  const duplicate = await prisma.infoFile.findFirst({
+    where: {
+      folderId: existing.folderId,
+      name,
+      NOT: { id: existing.id },
+    },
+  });
+  if (duplicate) {
+    return res.status(409).json({ message: 'Fajl sa tim nazivom već postoji u fascikli' });
+  }
+
+  const record = await prisma.infoFile.update({
+    where: { id: existing.id },
+    data: { name },
+  });
+  res.json(serializeInfoFile(record));
+}));
+
+app.put(
+  '/api/info/files/:id',
+  authMiddleware,
+  editorOnly,
+  infoUpload.single('file'),
+  asyncRoute(async (req, res) => {
+    if (!req.file) return res.status(400).json({ message: 'Nema fajla' });
+    const existing = await prisma.infoFile.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ message: 'Fajl nije pronađen' });
+
+    await removeStoredFile(existing.storedPath);
+    const storedPath = await saveInfoFile(req.file.buffer, existing.folderId, req.file.originalname);
+    const nextName = String(req.body?.name || '').trim() || req.file.originalname || existing.name;
+
+    const duplicate = await prisma.infoFile.findFirst({
+      where: {
+        folderId: existing.folderId,
+        name: nextName,
+        NOT: { id: existing.id },
+      },
+    });
+    if (duplicate) {
+      return res.status(409).json({ message: 'Fajl sa tim nazivom već postoji u fascikli' });
+    }
+
+    const record = await prisma.infoFile.update({
+      where: { id: existing.id },
+      data: {
+        name: nextName,
+        storedPath,
+        mimeType: req.file.mimetype || null,
+        sizeBytes: req.file.size,
+        uploadedBy: req.userId,
+      },
+    });
+    res.json(serializeInfoFile(record));
+  }),
+);
 
 const DEFAULT_EXCURSIONS = [
   { name: 'Robinzon', adlPrice: 36, icon: 'boat', theme: 'cyan', sortOrder: 0 },

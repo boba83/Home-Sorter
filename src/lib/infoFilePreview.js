@@ -17,9 +17,20 @@ export function getInfoFilePreviewKind(file) {
         return 'image';
     }
     if (
-        /\.(docx?|xlsx?|xls|pptx?|ppt)$/i.test(name) ||
+        name.endsWith('.docx') ||
+        mime.includes('wordprocessingml.document')
+    ) {
+        return 'docx';
+    }
+    if (
+        name.endsWith('.doc') ||
+        mime === 'application/msword'
+    ) {
+        return 'doc';
+    }
+    if (
+        /\.(xlsx?|xls|pptx?|ppt)$/i.test(name) ||
         mime.includes('officedocument') ||
-        mime.includes('msword') ||
         mime.includes('ms-excel') ||
         mime.includes('ms-powerpoint')
     ) {
@@ -30,5 +41,9 @@ export function getInfoFilePreviewKind(file) {
 
 export function canPreviewInfoFile(file) {
     const kind = getInfoFilePreviewKind(file);
-    return kind === 'pdf' || kind === 'text' || kind === 'image';
+    return kind === 'pdf' || kind === 'text' || kind === 'image' || kind === 'docx';
+}
+
+export function canEditInfoFile(file) {
+    return Boolean(file?.id);
 }

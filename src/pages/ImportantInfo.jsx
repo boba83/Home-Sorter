@@ -43,9 +43,11 @@ import {
     resolveFolderColor,
 } from '@/lib/infoFolderColors';
 import {
+    canEditInfoFile,
     canPreviewInfoFile,
     getInfoFilePreviewKind,
 } from '@/lib/infoFilePreview';
+import DocxPreview from '@/components/info/DocxPreview';
 
 function formatBytes(bytes) {
     if (!bytes) return '0 B';
@@ -63,6 +65,9 @@ export default function ImportantInfo() {
     const [folderName, setFolderName] = useState('');
     const [folderColor, setFolderColor] = useState(DEFAULT_FOLDER_COLOR);
     const [editTarget, setEditTarget] = useState(null);
+    const [fileEditTarget, setFileEditTarget] = useState(null);
+    const [fileName, setFileName] = useState('');
+    const [fileReplace, setFileReplace] = useState(null);
 
     const { data: currentUser } = useQuery({
         queryKey: ['currentUser'],
@@ -168,9 +173,9 @@ export default function ImportantInfo() {
 
     const handlePreviewFile = async (file) => {
         const kind = getInfoFilePreviewKind(file);
-        if (kind === 'office') {
+        if (kind === 'doc') {
             alert(
-                'Word, Excel i PowerPoint fajlovi se ne mogu otvoriti u pregledaču. Koristite Preuzmi i otvorite u odgovarajućoj aplikaciji.',
+                'Stari .doc format nije podržan za pregled u pregledaču. Preuzmite fajl ili sačuvajte kao .docx.',
             );
             return;
         }
@@ -190,12 +195,46 @@ export default function ImportantInfo() {
                 name: file.name,
                 kind,
                 url,
+                blob,
                 textContent,
             });
         } catch (e) {
             alert(e.message || 'Pregled nije uspeo');
         } finally {
             setPreviewLoading(false);
+        }
+    };
+
+    const openFileEditDialog = (file) => {
+        setFileEditTarget(file);
+        setFileName(file.name);
+        setFileReplace(null);
+    };
+
+    const handleUpdateFile = async () => {
+        if (!fileEditTarget) return;
+        const name = fileName.trim();
+        if (!name) return;
+        setIsSaving(true);
+        try {
+            if (fileReplace) {
+                await api.info.replaceFile(fileEditTarget.id, fileReplace, name);
+            } else if (name !== fileEditTarget.name) {
+                await api.info.updateFile(fileEditTarget.id, { name });
+            } else {
+                setFileEditTarget(null);
+                setFileName('');
+                setFileReplace(null);
+                return;
+            }
+            setFileEditTarget(null);
+            setFileName('');
+            setFileReplace(null);
+            invalidate();
+        } catch (e) {
+            alert(e.message || 'Greška');
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -414,7 +453,7 @@ export default function ImportantInfo() {
                                                     variant="ghost"
                                                     size="icon"
                                                     className="h-8 w-8"
-                                                    title="Otvori u pregledaču"
+                                                    title="Pregled"
                                                     disabled={previewLoading}
                                                     onClick={() => handlePreviewFile(file)}
                                                 >
@@ -431,18 +470,31 @@ export default function ImportantInfo() {
                                             >
                                                 <Download className="w-4 h-4" />
                                             </Button>
-                                            {canDelete && (
-                                                <Button
-                                                    type="button"
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 opacity-0 group-hover:opacity-100"
-                                                    onClick={() =>
-                                                        setDeleteConfirm({ type: 'file', item: file })
-                                                    }
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </Button>
+                                            {canEdit && canEditInfoFile(file) && (
+                                                <>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 opacity-0 group-hover:opacity-100"
+                                                        title="Uredi"
+                                                        onClick={() => openFileEditDialog(file)}
+                                                    >
+                                                        <Pencil className="w-4 h-4" />
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 opacity-0 group-hover:opacity-100"
+                                                        title="Obriši"
+                                                        onClick={() =>
+                                                            setDeleteConfirm({ type: 'file', item: file })
+                                                        }
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </>
                                             )}
                                         </div>
                                     </div>
@@ -558,6 +610,9 @@ export default function ImportantInfo() {
                                 {filePreview.textContent}
                             </pre>
                         )}
+                        {filePreview?.kind === 'docx' && filePreview.blob && (
+                            <DocxPreview blob={filePreview.blob} />
+                        )}
                     </div>
                     <DialogFooter className="gap-2 sm:gap-0">
                         <Button
@@ -571,6 +626,67 @@ export default function ImportantInfo() {
                             Preuzmi
                         </Button>
                         <Button onClick={closeFilePreview}>Zatvori</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog
+                open={Boolean(fileEditTarget)}
+                onOpenChange={(open) => {
+                    if (!open) {
+                        setFileEditTarget(null);
+                        setFileName('');
+                        setFileReplace(null);
+                    }
+                }}
+            >
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Uredi fajl</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-2 space-y-4">
+                        <div>
+                            <Label htmlFor="fileName">Naziv</Label>
+                            <Input
+                                id="fileName"
+                                value={fileName}
+                                onChange={(e) => setFileName(e.target.value)}
+                                className="mt-2"
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor="fileReplace">Zameni sadržaj (opciono)</Label>
+                            <Input
+                                id="fileReplace"
+                                type="file"
+                                accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                                className="mt-2"
+                                onChange={(e) => setFileReplace(e.target.files?.[0] ?? null)}
+                            />
+                            <p className="text-xs text-slate-500 mt-1">
+                                Ostavite prazno ako menjate samo naziv.
+                            </p>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setFileEditTarget(null);
+                                setFileName('');
+                                setFileReplace(null);
+                            }}
+                        >
+                            Otkaži
+                        </Button>
+                        <Button
+                            className="bg-orange-500 hover:bg-orange-600"
+                            disabled={isSaving || !fileName.trim()}
+                            onClick={handleUpdateFile}
+                        >
+                            {isSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Sačuvaj
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
