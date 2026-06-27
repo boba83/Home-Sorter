@@ -46,7 +46,7 @@ import {
   scanHotelNamesInText,
   splitPdfTextToLines,
 } from './lib/astraRoomingParser.js';
-import { sortRoomsByNumber } from '../src/lib/roomNumberSort.js';
+import { sortRoomsByNumber } from './lib/roomNumberSort.js';
 import { notifyOnTaskCreated, notifyOnTaskUpdated } from './lib/taskNotifications.js';
 import { sendInviteEmail, isMailConfigured } from './lib/mail.js';
 import { generateTemporaryPassword, validatePasswordStrength } from './lib/password.js';
@@ -1665,6 +1665,8 @@ app.delete('/api/duty-shifts/:id', authMiddleware, async (req, res) => {
   res.status(204).end();
 });
 
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
 app.use((err, req, res, _next) => {
   console.error('[API]', req.method, req.path, err);
   if (err.code === 'P2002') {
@@ -1679,8 +1681,6 @@ app.use((err, req, res, _next) => {
   });
 });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
-
 app.get('/', (req, res) => {
   const appUrl = appBaseUrl(req).replace(/\/$/, '');
   res.type('text/plain').send(
@@ -1690,6 +1690,15 @@ app.get('/', (req, res) => {
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Home Sorter API: port ${PORT}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[API] unhandledRejection', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[API] uncaughtException', err);
+  process.exit(1);
 });
 
 server.on('error', (err) => {

@@ -5,7 +5,7 @@
 import {
   maskCompoundStructurePhrases,
   unmaskCompoundStructurePhrases,
-} from '../../src/lib/roomingStructureProtect.js';
+} from './roomingStructureProtect.js';
 
 const SEX_ALT = 'MR|MRS|CHD|INF|MS|MISS|DR';
 /** Sobe: 4, 101, B3, A1, A 1, UL9, 11A, 5b, 3-B, 02. (PDF artefakt tačka) */
