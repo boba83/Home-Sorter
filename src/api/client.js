@@ -27,11 +27,16 @@ async function parseJsonResponse(res) {
 }
 
 const REQUEST_TIMEOUT_MS = 20000;
-/** Ostali /auth pozivi (npr. /auth/me) */
+/** Ostali /auth pozivi */
 const AUTH_TIMEOUT_MS = 20000;
-/** Prijava — Render cold start često >10s; ne želimo lažni timeout. */
-const AUTH_LOGIN_TIMEOUT_MS = 60000;
-const AUTH_TRANSIENT_RETRIES = 2;
+/** Prvi pokušaj prijave — dovoljno za Render cold start, ali ne 3×60s spinner. */
+const AUTH_LOGIN_TIMEOUT_MS = 45000;
+const AUTH_LOGIN_RETRY_TIMEOUT_MS = 20000;
+const AUTH_ME_RETRY_TIMEOUT_MS = 12000;
+/** Jedan retry (ukupno 2 pokušaja), ne tri. */
+const AUTH_TRANSIENT_RETRIES = 1;
+const WAKE_PING_TIMEOUT_MS = 10000;
+const WAKE_MAX_ATTEMPTS = 18;
 
 /** Produkcija (Vercel): VITE_API_URL=https://api.astratravel-sitonija.com — lokalno prazno → Vite proxy /api */
 const API_BASE = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -56,10 +61,47 @@ function connectionErrorMessage() {
     : 'Ne mogu da se povežem sa serverom. Proverite internet i pokušajte ponovo za nekoliko sekundi.';
 }
 
+function authRequestTimeoutMs(path, authRetry) {
+  if (path === '/auth/login') {
+    return authRetry === 0 ? AUTH_LOGIN_TIMEOUT_MS : AUTH_LOGIN_RETRY_TIMEOUT_MS;
+  }
+  if (path === '/auth/me') {
+    return authRetry === 0 ? AUTH_TIMEOUT_MS : AUTH_ME_RETRY_TIMEOUT_MS;
+  }
+  if (path.startsWith('/auth')) return AUTH_TIMEOUT_MS;
+  return REQUEST_TIMEOUT_MS;
+}
+
+/** Tihi ping dok korisnik unosi podatke — budi Render pre klika „Prijavi se“. */
+export async function wakeApi({ signal } = {}) {
+  for (let i = 0; i < WAKE_MAX_ATTEMPTS; i++) {
+    if (signal?.aborted) return false;
+    try {
+      const controller = new AbortController();
+      const onAbort = () => controller.abort();
+      signal?.addEventListener('abort', onAbort, { once: true });
+      const t = setTimeout(() => controller.abort(), WAKE_PING_TIMEOUT_MS);
+      const r = await fetch(withCacheBust(buildApiUrl('/health')), {
+        cache: 'no-store',
+        credentials: 'omit',
+        signal: controller.signal,
+      });
+      clearTimeout(t);
+      signal?.removeEventListener('abort', onAbort);
+      if (r.ok) return true;
+    } catch {
+      /* probaj ponovo */
+    }
+    if (signal?.aborted) return false;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  return false;
+}
+
 function timeoutErrorMessage() {
   return import.meta.env.DEV
     ? 'Server ne odgovara na vreme. Proverite da li API radi (npm run dev:server ili npm run dev:all).'
-    : 'Server trenutno ne odgovara na vreme (često posle dužeg mirovanja). Sačekajte nekoliko sekundi i pokušajte ponovo.';
+    : 'Server trenutno ne odgovara. Sačekajte minut i pokušajte ponovo — ako se ponavlja, API hosting možda nije aktivan.';
 }
 
 async function request(path, options = {}, attempt = 0) {
@@ -67,12 +109,7 @@ async function request(path, options = {}, attempt = 0) {
   const fetchOptions = { ...options };
   delete fetchOptions.__authRetry;
 
-  const timeoutMs =
-    path === '/auth/login'
-      ? AUTH_LOGIN_TIMEOUT_MS
-      : path.startsWith('/auth')
-        ? AUTH_TIMEOUT_MS
-        : REQUEST_TIMEOUT_MS;
+  const timeoutMs = authRequestTimeoutMs(path, authRetry);
 
   const headers = {
     'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -103,7 +140,7 @@ async function request(path, options = {}, attempt = 0) {
       authRetry < AUTH_TRANSIENT_RETRIES &&
       isTransientNetworkError(e);
     if (canRetryAuth) {
-      await new Promise((r) => setTimeout(r, 1200 * (authRetry + 1)));
+      await new Promise((r) => setTimeout(r, 1500));
       return request(path, { ...fetchOptions, __authRetry: authRetry + 1 }, attempt);
     }
     if (e?.name === 'AbortError') {
@@ -364,6 +401,20 @@ const info = {
     const blob = await this.fetchFileBlob(file.id, { inline: true });
     const url = URL.createObjectURL(blob);
     return { url, blob };
+  },
+  updateFile(id, data) {
+    return request(`/info/files/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+  async replaceFile(id, file, name) {
+    const form = new FormData();
+    form.append('file', file);
+    if (name != null && String(name).trim()) {
+      form.append('name', String(name).trim());
+    }
+    return request(`/info/files/${id}`, { method: 'PUT', body: form });
   },
   deleteFile(id) {
     return request(`/info/files/${id}`, { method: 'DELETE' });

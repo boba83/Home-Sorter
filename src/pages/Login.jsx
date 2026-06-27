@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { buildApiUrl } from '@/api/client';
+import { wakeApi } from '@/api/client';
 import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,16 +16,32 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingHint, setLoadingHint] = useState('');
 
   React.useEffect(() => {
     if (isAuthenticated) navigate('/', { replace: true });
   }, [isAuthenticated, navigate]);
 
-  /** Tihi „warm-up“ (npr. Render cold start) — bez UI statusa da korisnik ne vidi lažne „server ne radi“. */
+  /** Tihi wake-up dok korisnik popunjava formu — bez alarmantnog UI. */
   React.useEffect(() => {
-    const url = buildApiUrl('/health');
-    void fetch(url, { cache: 'no-store', credentials: 'omit' }).catch(() => {});
+    const ac = new AbortController();
+    void wakeApi({ signal: ac.signal });
+    return () => ac.abort();
   }, []);
+
+  React.useEffect(() => {
+    if (!loading) {
+      setLoadingHint('');
+      return;
+    }
+    setLoadingHint('Povezivanje…');
+    const t1 = setTimeout(() => setLoadingHint('Server se budi, sačekajte…'), 8000);
+    const t2 = setTimeout(() => setLoadingHint('Još uvek čekamo odgovor servera…'), 25000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [loading]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -83,6 +99,9 @@ export default function Login() {
             />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}
+          {loading && loadingHint && (
+            <p className="text-center text-xs text-slate-500">{loadingHint}</p>
+          )}
           <Button
             type="submit"
             className="w-full bg-blue-900 text-white hover:bg-blue-950"
