@@ -50,8 +50,9 @@ export default function TaskManager() {
     queryKey: ['columns'],
     queryFn: async () => {
       const result = await base44.entities.Column.filter({}, 'order');
-      console.log('COLUMNS RESULT:', JSON.stringify(result));
-      return result;
+      return Array.isArray(result)
+        ? [...result].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        : [];
     },
   });
 
@@ -59,8 +60,7 @@ export default function TaskManager() {
     queryKey: ['tasks'],
     queryFn: async () => {
       const result = await base44.entities.Task.filter({}, 'order');
-      console.log('TASKS RESULT:', JSON.stringify(result));
-      return result;
+      return Array.isArray(result) ? result : [];
     },
   });
 
@@ -122,18 +122,90 @@ export default function TaskManager() {
   };
 
   const handleDragEnd = async (result) => {
-    const { source, destination, draggableId } = result;
+    const { source, destination, draggableId, type } = result;
     if (!destination) return;
-    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+    if (source.droppableId === destination.droppableId && source.index === destination.index) {
+      return;
+    }
 
-    const task = tasks.find(t => t.id === draggableId);
-    if (!task) return;
+    if (type === 'COLUMN') {
+      const next = Array.from(columns);
+      const [moved] = next.splice(source.index, 1);
+      next.splice(destination.index, 0, moved);
+      const withOrder = next.map((col, index) => ({ ...col, order: index }));
+      queryClient.setQueryData(['columns'], withOrder);
+      try {
+        await Promise.all(
+          withOrder.map((col) => base44.entities.Column.update(col.id, { name: col.name, order: col.order })),
+        );
+      } catch (e) {
+        console.error(e);
+        queryClient.invalidateQueries({ queryKey: ['columns'] });
+      }
+      return;
+    }
 
-    await base44.entities.Task.update(draggableId, {
-      column_id: destination.droppableId,
-      order: destination.index,
+    // TASK move / reorder
+    const sourceColId = source.droppableId;
+    const destColId = destination.droppableId;
+    const nextTasks = tasks.map((t) => ({ ...t }));
+    const sourceList = nextTasks
+      .filter((t) => t.column_id === sourceColId)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const destList =
+      sourceColId === destColId
+        ? sourceList
+        : nextTasks
+            .filter((t) => t.column_id === destColId)
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+    const [movedTask] = sourceList.splice(source.index, 1);
+    if (!movedTask || movedTask.id !== draggableId) {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      return;
+    }
+
+    movedTask.column_id = destColId;
+    if (sourceColId === destColId) {
+      sourceList.splice(destination.index, 0, movedTask);
+      sourceList.forEach((t, i) => {
+        t.order = i;
+      });
+    } else {
+      destList.splice(destination.index, 0, movedTask);
+      sourceList.forEach((t, i) => {
+        t.order = i;
+      });
+      destList.forEach((t, i) => {
+        t.order = i;
+      });
+    }
+
+    const byId = new Map(nextTasks.map((t) => [t.id, t]));
+    [...sourceList, ...(sourceColId === destColId ? [] : destList)].forEach((t) => {
+      byId.set(t.id, t);
     });
-    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    const optimistic = Array.from(byId.values());
+    queryClient.setQueryData(['tasks'], optimistic);
+
+    const toPersist =
+      sourceColId === destColId
+        ? sourceList
+        : [...sourceList, ...destList];
+
+    try {
+      await Promise.all(
+        toPersist.map((t) =>
+          base44.entities.Task.update(t.id, {
+            column_id: t.column_id,
+            order: t.order,
+          }),
+        ),
+      );
+    } catch (e) {
+      console.error(e);
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    }
   };
 
   const getColumnTasks = (columnId) =>
@@ -208,31 +280,64 @@ export default function TaskManager() {
       {/* Board */}
       <DragDropContext onDragEnd={canEdit ? handleDragEnd : () => {}}>
         <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', padding: '0 20px 20px' }}>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start', paddingTop: '8px', paddingBottom: '8px' }}>
-            {columns.map(col => (
-              <BoardColumn
-                key={col.id}
-                column={col}
-                tasks={getColumnTasks(col.id)}
-                onAddTask={canEdit ? (columnId, title) => createTask.mutate({ columnId, title }) : undefined}
-                onCardClick={setSelectedTask}
-                onDeleteColumn={
-                  canDelete
-                    ? (id) => {
-                        const col = columns.find((c) => c.id === id);
-                        setColumnToDelete(col || { id, name: 'ovu kolonu' });
-                      }
-                    : undefined
-                }
-                onRenameColumn={canEdit ? (id, name) => renameColumn.mutate({ id, name }) : undefined}
-              />
-            ))}
+          <Droppable droppableId="board-columns" direction="horizontal" type="COLUMN">
+            {(boardProvided) => (
+              <div
+                ref={boardProvided.innerRef}
+                {...boardProvided.droppableProps}
+                style={{
+                  display: 'flex',
+                  gap: '16px',
+                  alignItems: 'flex-start',
+                  paddingTop: '8px',
+                  paddingBottom: '8px',
+                  minHeight: '200px',
+                }}
+              >
+                {columns.map((col, index) => (
+                  <Draggable
+                    key={col.id}
+                    draggableId={`column-${col.id}`}
+                    index={index}
+                    isDragDisabled={!canEdit}
+                  >
+                    {(colProvided, colSnapshot) => (
+                      <BoardColumn
+                        column={col}
+                        tasks={getColumnTasks(col.id)}
+                        canDragTasks={canEdit}
+                        onAddTask={
+                          canEdit
+                            ? (columnId, title) => createTask.mutate({ columnId, title })
+                            : undefined
+                        }
+                        onCardClick={setSelectedTask}
+                        onDeleteColumn={
+                          canDelete
+                            ? (id) => {
+                                const found = columns.find((c) => c.id === id);
+                                setColumnToDelete(found || { id, name: 'ovu kolonu' });
+                              }
+                            : undefined
+                        }
+                        onRenameColumn={
+                          canEdit ? (id, name) => renameColumn.mutate({ id, name }) : undefined
+                        }
+                        innerRef={colProvided.innerRef}
+                        draggableProps={colProvided.draggableProps}
+                        dragHandleProps={canEdit ? colProvided.dragHandleProps : undefined}
+                        isDragging={colSnapshot.isDragging}
+                      />
+                    )}
+                  </Draggable>
+                ))}
+                {boardProvided.placeholder}
 
-            {/* Add Column */}
-            <div className="flex-shrink-0 w-72">
-                {addColumnUi}
-            </div>
-          </div>
+                {/* Add Column */}
+                <div className="flex-shrink-0 w-72">{addColumnUi}</div>
+              </div>
+            )}
+          </Droppable>
         </div>
       </DragDropContext>
 

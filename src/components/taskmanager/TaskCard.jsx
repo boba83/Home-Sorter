@@ -3,8 +3,15 @@ import { Calendar, CheckSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { LABEL_COLORS } from './taskLabels';
 
-export default function TaskCard({ task, onClick, dragHandleProps = {}, draggableProps = {}, innerRef }) {
-  const doneCount = (task.checklists || []).filter(c => c.done).length;
+export default function TaskCard({
+  task,
+  onClick,
+  dragHandleProps = {},
+  draggableProps = {},
+  innerRef,
+  isDragging = false,
+}) {
+  const doneCount = (task.checklists || []).filter((c) => c.done).length;
   const totalCount = (task.checklists || []).length;
   const isOverdue = task.due_date && new Date(task.due_date) < new Date();
 
@@ -14,7 +21,11 @@ export default function TaskCard({ task, onClick, dragHandleProps = {}, draggabl
       {...draggableProps}
       {...dragHandleProps}
       onClick={onClick}
-      className="bg-white rounded-xl shadow-sm border border-slate-200 cursor-pointer hover:shadow-md hover:border-blue-300 transition-all duration-150 select-none overflow-hidden"
+      className={`bg-white rounded-xl border select-none overflow-hidden transition-shadow duration-150 ${
+        isDragging
+          ? 'shadow-xl border-blue-400 ring-2 ring-blue-200/80 rotate-1 cursor-grabbing'
+          : 'shadow-sm border-slate-200 cursor-grab hover:shadow-md hover:border-blue-300'
+      }`}
     >
       {task.card_color && (
         <div className="px-3 py-1.5 flex items-center gap-2" style={{ backgroundColor: task.card_color }}>
