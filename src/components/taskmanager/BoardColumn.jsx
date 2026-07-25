@@ -43,14 +43,25 @@ export default function BoardColumn({ column, tasks, onAddTask, onCardClick, onD
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <h3 className="font-semibold text-slate-700 text-sm truncate">{column.name}</h3>
             <span className="bg-slate-300 text-slate-600 text-xs rounded-full px-1.5 py-0.5 flex-shrink-0">{tasks.length}</span>
-            <button onClick={() => setEditingName(true)} className="text-slate-300 hover:text-slate-500 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setEditingName(true)}
+              className="text-slate-300 hover:text-slate-500 flex-shrink-0"
+            >
               <Pencil className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
-        <button onClick={() => onDeleteColumn(column.id)} className="text-slate-300 hover:text-red-400 transition-colors ml-1 flex-shrink-0">
-          <Trash2 className="w-4 h-4" />
-        </button>
+        {onDeleteColumn ? (
+          <button
+            type="button"
+            onClick={() => onDeleteColumn(column.id)}
+            className="text-slate-300 hover:text-red-400 transition-colors ml-1 flex-shrink-0"
+            title="Obriši kolonu"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        ) : null}
       </div>
 
       {/* Droppable area */}

@@ -490,7 +490,7 @@ app.put('/api/columns/:id', authMiddleware, editorOnly, async (req, res) => {
   res.json(serializeColumn(col));
 });
 
-app.delete('/api/columns/:id', authMiddleware, editorOnly, async (req, res) => {
+app.delete('/api/columns/:id', authMiddleware, adminOnly, async (req, res) => {
   await prisma.task.deleteMany({ where: { columnId: req.params.id } });
   await prisma.column.delete({ where: { id: req.params.id } });
   res.status(204).end();
@@ -645,7 +645,7 @@ app.patch('/api/notifications/:id/read', authMiddleware, async (req, res) => {
   res.json(serializeNotification(updated));
 });
 
-app.delete('/api/tasks/:id', authMiddleware, editorOnly, async (req, res) => {
+app.delete('/api/tasks/:id', authMiddleware, adminOnly, async (req, res) => {
   await prisma.task.delete({ where: { id: req.params.id } });
   res.status(204).end();
 });
