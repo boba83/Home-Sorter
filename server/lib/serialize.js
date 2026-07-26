@@ -350,9 +350,9 @@ export function validateDutyShiftPayload(data) {
   return null;
 }
 
-const ROOM_DUTY_SLOT_KEYS = new Set(['aristotelis', 'sartios', 'ostraco']);
+const ROOM_DUTY_SLOT_KEYS = new Set(['aristotelis', 'panorama-beach', 'sartios', 'ostraco']);
 const ROOM_DUTY_MIN_M = 9 * 60;
-const ROOM_DUTY_MAX_M = 15 * 60;
+const ROOM_DUTY_MAX_M = 17 * 60;
 
 export function serializeRoomDutyShift(row) {
   return {
@@ -391,7 +391,7 @@ export function validateRoomDutyShiftPayload(data) {
   if (a === null || b === null) return 'Neispravan format vremena';
   if (b <= a) return 'Kraj mora biti posle početka';
   if (a < ROOM_DUTY_MIN_M || b > ROOM_DUTY_MAX_M) {
-    return 'Za izdavanje soba dozvoljeno je samo od 09:00 do 15:00';
+    return 'Za izdavanje soba dozvoljeno je samo od 09:00 do 17:00';
   }
   return null;
 }

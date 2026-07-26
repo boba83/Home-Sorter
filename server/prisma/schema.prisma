@@ -26,7 +26,7 @@ model User {
   roomDutyShifts RoomDutyShift[]
 }
 
-/// Dežurstva za izdavanje soba (Aristotelis / Sartios / Ostraco) — više smena po danu i liniji, vreme 09:00–15:00.
+/// Dežurstva za izdavanje soba (Aristotelis|Panorama Beach / Sartios / Ostraco) — više smena, 09:00–17:00.
 model RoomDutyShift {
   id        String   @id @default(cuid())
   date      String

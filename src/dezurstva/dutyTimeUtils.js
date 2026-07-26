@@ -30,6 +30,7 @@ export const PRESET_TAB_CLASSES = {
   blue: 'bg-blue-600 text-white border-blue-700 hover:bg-blue-700 hover:text-white',
   red: 'bg-red-600 text-white border-red-700 hover:bg-red-700 hover:text-white',
   green: 'bg-green-600 text-white border-green-700 hover:bg-green-700 hover:text-white',
+  orange: 'bg-orange-600 text-white border-orange-700 hover:bg-orange-700 hover:text-white',
 };
 
 /** Tri panela dana (vizuelno ograničeni delovi) — usklađeno sa PRESET_BLOCKS. */

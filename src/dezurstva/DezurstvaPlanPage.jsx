@@ -37,7 +37,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { EXCURSION_DUTY_SLOTS, ROOM_DUTY_PRESETS, ROOM_DUTY_WINDOW } from '@/dezurstva/excursionDutyConfig';
+import { EXCURSION_DUTY_SLOTS, ROOM_DUTY_PRESETS, ROOM_DUTY_WINDOW, roomDutySlotLabel } from '@/dezurstva/excursionDutyConfig';
 import {
   PRESET_BLOCKS,
   PRESET_TAB_CLASSES,
@@ -50,11 +50,14 @@ import {
 } from '@/dezurstva/dutyTimeUtils';
 
 const WEEKDAYS = ['Pon', 'Uto', 'Sre', 'Čet', 'Pet', 'Sub', 'Ned'];
+const ROOM_DUTY_END_MAX_M = 17 * 60;
+const ROOM_DUTY_START_MIN_M = 9 * 60;
 
-function clampHmToNotAfter15(hm) {
+function clampHmToRoomDutyWindow(hm) {
   const n = hmToMinutes(normalizeHm(hm));
   if (n == null) return normalizeHm(hm);
-  return n > 15 * 60 ? '15:00' : normalizeHm(hm);
+  if (n < ROOM_DUTY_START_MIN_M) return '09:00';
+  return n > ROOM_DUTY_END_MAX_M ? '17:00' : normalizeHm(hm);
 }
 
 function buildMonthGrid(monthAnchor) {
@@ -140,6 +143,8 @@ export default function DezurstvaPlanPage() {
   const [roomDutyDialogOpen, setRoomDutyDialogOpen] = useState(false);
   const [roomDutyEditingId, setRoomDutyEditingId] = useState(null);
   const [roomDutySlotKey, setRoomDutySlotKey] = useState('aristotelis');
+  /** Izbor kuće na prvoj liniji (Aristotelis ili Panorama Beach). */
+  const [firstLineHouseKey, setFirstLineHouseKey] = useState('aristotelis');
   const [roomFormUserId, setRoomFormUserId] = useState('');
   const [roomFormStart, setRoomFormStart] = useState('09:00');
   const [roomFormEnd, setRoomFormEnd] = useState('12:00');
@@ -284,7 +289,8 @@ export default function DezurstvaPlanPage() {
 
   const openRoomDutyNew = (slotKey) => {
     setRoomDutyEditingId(null);
-    setRoomDutySlotKey(slotKey);
+    const key = slotKey === 'aristotelis' ? firstLineHouseKey : slotKey;
+    setRoomDutySlotKey(key);
     setRoomFormUserId(eligibleUsers[0]?.id || '');
     setRoomFormStart('09:00');
     setRoomFormEnd('12:00');
@@ -295,6 +301,9 @@ export default function DezurstvaPlanPage() {
   const openRoomDutyEdit = (s) => {
     setRoomDutyEditingId(s.id);
     setRoomDutySlotKey(s.slot_key);
+    if (s.slot_key === 'aristotelis' || s.slot_key === 'panorama-beach') {
+      setFirstLineHouseKey(s.slot_key);
+    }
     setRoomFormUserId(s.user_id);
     setRoomFormStart(s.start_time);
     setRoomFormEnd(s.end_time);
@@ -309,7 +318,7 @@ export default function DezurstvaPlanPage() {
 
   const applyRoomDurationHours = (h) => {
     const end = addHoursToHm(roomFormStart, h);
-    if (end) setRoomFormEnd(clampHmToNotAfter15(end));
+    if (end) setRoomFormEnd(clampHmToRoomDutyWindow(end));
   };
 
   const handleRoomDutySubmit = () => {
@@ -325,10 +334,16 @@ export default function DezurstvaPlanPage() {
     }
     const sm = hmToMinutes(start_time);
     const em = hmToMinutes(end_time);
-    if (sm == null || em == null || sm < 9 * 60 || em > 15 * 60 || em <= sm) {
+    if (
+      sm == null ||
+      em == null ||
+      sm < ROOM_DUTY_START_MIN_M ||
+      em > ROOM_DUTY_END_MAX_M ||
+      em <= sm
+    ) {
       toast({
-        title: 'Interval 9:00–15:00',
-        description: 'Početak i kraj moraju biti između 09:00 i 15:00, kraj posle početka.',
+        title: 'Interval 9:00–17:00',
+        description: 'Početak i kraj moraju biti između 09:00 i 17:00, kraj posle početka.',
         variant: 'destructive',
       });
       return;
@@ -474,8 +489,8 @@ export default function DezurstvaPlanPage() {
               <CardHeader className="pb-2 px-3 pt-3">
                 <CardTitle className="text-sm font-semibold sm:text-base">Dežurstva za izdavanje soba</CardTitle>
                 <p className="text-xs text-slate-500 mt-1 leading-snug">
-                  Tri linije (Aristotelis, Sartios, Ostraco). Možete dodati više smena po liniji; vreme samo od 9:00 do
-                  15:00 — isti prikaz kao desno (osoba, interval, traka).
+                  Linije: Aristotelis ili Panorama Beach, Sartios, Ostraco. Više smena po liniji; vreme od 9:00 do
+                  17:00 — isti prikaz kao desno (osoba, interval, traka).
                 </p>
               </CardHeader>
               <CardContent className="px-3 pb-3 pt-0">
@@ -490,22 +505,59 @@ export default function DezurstvaPlanPage() {
                           value={s.key}
                           className={`text-[11px] sm:text-sm px-1.5 py-2 border border-transparent whitespace-normal leading-tight ${s.tabClass}`}
                         >
-                          {s.label}
+                          {s.houseOptions ? 'Aristotelis / Panorama' : s.label}
                         </TabsTrigger>
                       ))}
                     </TabsList>
                     {EXCURSION_DUTY_SLOTS.map((s) => {
-                      const list = roomDutiesBySlot[s.key] || [];
+                      const activeSlotKey = s.houseOptions ? firstLineHouseKey : s.key;
+                      const list = roomDutiesBySlot[activeSlotKey] || [];
+                      const displayLabel = s.houseOptions
+                        ? roomDutySlotLabel(firstLineHouseKey)
+                        : s.label;
                       return (
                         <TabsContent key={s.key} value={s.key} className="mt-3">
                           <section className={`flex flex-col rounded-xl p-3 ${s.panelClass}`}>
                             <header className="shrink-0 border-b border-slate-900/10 pb-2 mb-2 flex flex-wrap items-start justify-between gap-2">
-                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm leading-tight min-w-0">
-                                <span className="font-semibold text-slate-900">{s.label}</span>
-                                <span className="text-slate-400 select-none" aria-hidden>
-                                  ·
-                                </span>
-                                <span className="text-slate-700 tabular-nums font-medium">{ROOM_DUTY_WINDOW.timeRange}</span>
+                              <div className="flex flex-col gap-2 min-w-0 flex-1">
+                                {s.houseOptions ? (
+                                  <div className="space-y-1 max-w-xs">
+                                    <Label className="text-xs text-slate-600">Kuća</Label>
+                                    <Select
+                                      value={firstLineHouseKey}
+                                      onValueChange={(v) => {
+                                        setFirstLineHouseKey(v);
+                                        setRoomDutySlotKey(v);
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-9 bg-white/90">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {s.houseOptions.map((opt) => (
+                                          <SelectItem key={opt.key} value={opt.key}>
+                                            {opt.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm leading-tight min-w-0">
+                                    <span className="font-semibold text-slate-900">{displayLabel}</span>
+                                    <span className="text-slate-400 select-none" aria-hidden>
+                                      ·
+                                    </span>
+                                    <span className="text-slate-700 tabular-nums font-medium">
+                                      {ROOM_DUTY_WINDOW.timeRange}
+                                    </span>
+                                  </div>
+                                )}
+                                {s.houseOptions ? (
+                                  <span className="text-xs text-slate-600 tabular-nums font-medium">
+                                    {ROOM_DUTY_WINDOW.timeRange}
+                                  </span>
+                                ) : null}
                               </div>
                               {!isViewer && eligibleUsers.length > 0 && (
                                 <Button
@@ -791,12 +843,33 @@ export default function DezurstvaPlanPage() {
                 <Input value={selectedDayStr} readOnly className="bg-slate-50" />
               </div>
               <div className="space-y-2">
-                <Label>Linija</Label>
-                <Input
-                  value={EXCURSION_DUTY_SLOTS.find((x) => x.key === roomDutySlotKey)?.label || roomDutySlotKey}
-                  readOnly
-                  className="bg-slate-50"
-                />
+                <Label>Linija / kuća</Label>
+                {EXCURSION_DUTY_SLOTS.find((x) => x.key === 'aristotelis')?.houseOptions?.some(
+                  (o) => o.key === roomDutySlotKey,
+                ) || roomDutySlotKey === 'panorama-beach' ? (
+                  <Select
+                    value={roomDutySlotKey === 'panorama-beach' ? 'panorama-beach' : 'aristotelis'}
+                    onValueChange={(v) => {
+                      setRoomDutySlotKey(v);
+                      setFirstLineHouseKey(v);
+                    }}
+                    disabled={Boolean(roomDutyEditingId)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="aristotelis">Aristotelis</SelectItem>
+                      <SelectItem value="panorama-beach">Panorama Beach</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={roomDutySlotLabel(roomDutySlotKey)}
+                    readOnly
+                    className="bg-slate-50"
+                  />
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Korisnik</Label>
@@ -814,7 +887,7 @@ export default function DezurstvaPlanPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Brzi intervali (9–15)</Label>
+                <Label>Brzi intervali (9–17)</Label>
                 <div className="flex flex-wrap gap-2">
                   {ROOM_DUTY_PRESETS.map((p) => (
                     <Button
@@ -847,14 +920,14 @@ export default function DezurstvaPlanPage() {
                   <Input
                     value={roomFormEnd}
                     onChange={(e) => setRoomFormEnd(e.target.value)}
-                    placeholder="15:00"
+                    placeholder="17:00"
                   />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Trajanje od početka</Label>
                 <div className="flex flex-wrap gap-2">
-                  {[1, 2, 3, 4, 5, 6].map((h) => (
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((h) => (
                     <Button key={h} type="button" variant="outline" size="sm" onClick={() => applyRoomDurationHours(h)}>
                       +{h}h
                     </Button>
