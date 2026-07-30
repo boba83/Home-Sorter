@@ -143,8 +143,6 @@ export default function DezurstvaPlanPage() {
   const [roomDutyDialogOpen, setRoomDutyDialogOpen] = useState(false);
   const [roomDutyEditingId, setRoomDutyEditingId] = useState(null);
   const [roomDutySlotKey, setRoomDutySlotKey] = useState('aristotelis');
-  /** Izbor kuće na prvoj liniji (Aristotelis ili Panorama Beach). */
-  const [firstLineHouseKey, setFirstLineHouseKey] = useState('aristotelis');
   const [roomFormUserId, setRoomFormUserId] = useState('');
   const [roomFormStart, setRoomFormStart] = useState('09:00');
   const [roomFormEnd, setRoomFormEnd] = useState('12:00');
@@ -219,12 +217,14 @@ export default function DezurstvaPlanPage() {
   const roomDutyShifts = roomDutyResp?.shifts ?? [];
 
   const roomDutiesBySlot = useMemo(() => {
-    const m = { aristotelis: [], sartios: [], ostraco: [] };
+    const m = Object.fromEntries(EXCURSION_DUTY_SLOTS.map((s) => [s.key, []]));
     for (const s of roomDutyShifts) {
-      if (m[s.slot_key]) m[s.slot_key].push(s);
+      const key = String(s.slot_key || '').toLowerCase();
+      if (!m[key]) m[key] = [];
+      m[key].push(s);
     }
     for (const k of Object.keys(m)) {
-      m[k].sort((a, b) => a.start_time.localeCompare(b.start_time));
+      m[k].sort((a, b) => String(a.start_time || '').localeCompare(String(b.start_time || '')));
     }
     return m;
   }, [roomDutyShifts]);
@@ -289,8 +289,7 @@ export default function DezurstvaPlanPage() {
 
   const openRoomDutyNew = (slotKey) => {
     setRoomDutyEditingId(null);
-    const key = slotKey === 'aristotelis' ? firstLineHouseKey : slotKey;
-    setRoomDutySlotKey(key);
+    setRoomDutySlotKey(slotKey);
     setRoomFormUserId(eligibleUsers[0]?.id || '');
     setRoomFormStart('09:00');
     setRoomFormEnd('12:00');
@@ -301,9 +300,6 @@ export default function DezurstvaPlanPage() {
   const openRoomDutyEdit = (s) => {
     setRoomDutyEditingId(s.id);
     setRoomDutySlotKey(s.slot_key);
-    if (s.slot_key === 'aristotelis' || s.slot_key === 'panorama-beach') {
-      setFirstLineHouseKey(s.slot_key);
-    }
     setRoomFormUserId(s.user_id);
     setRoomFormStart(s.start_time);
     setRoomFormEnd(s.end_time);
@@ -489,8 +485,7 @@ export default function DezurstvaPlanPage() {
               <CardHeader className="pb-2 px-3 pt-3">
                 <CardTitle className="text-sm font-semibold sm:text-base">Dežurstva za izdavanje soba</CardTitle>
                 <p className="text-xs text-slate-500 mt-1 leading-snug">
-                  Linije: Aristotelis ili Panorama Beach, Sartios, Ostraco. Više smena po liniji; vreme od 9:00 do
-                  17:00 — isti prikaz kao desno (osoba, interval, traka).
+                  Linije: Aristotelis, Panorama Beach, Sartios, Ostraco. Više smena po liniji; vreme od 9:00 do 17:00.
                 </p>
               </CardHeader>
               <CardContent className="px-3 pb-3 pt-0">
@@ -498,66 +493,31 @@ export default function DezurstvaPlanPage() {
                   <p className="text-sm text-slate-500">Učitavanje…</p>
                 ) : (
                   <Tabs defaultValue="aristotelis" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3 h-auto p-1 gap-1 bg-slate-100/80">
+                    <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 h-auto p-1 gap-1 bg-slate-100/80">
                       {EXCURSION_DUTY_SLOTS.map((s) => (
                         <TabsTrigger
                           key={s.key}
                           value={s.key}
                           className={`text-[11px] sm:text-sm px-1.5 py-2 border border-transparent whitespace-normal leading-tight ${s.tabClass}`}
                         >
-                          {s.houseOptions ? 'Aristotelis / Panorama' : s.label}
+                          {s.label}
                         </TabsTrigger>
                       ))}
                     </TabsList>
                     {EXCURSION_DUTY_SLOTS.map((s) => {
-                      const activeSlotKey = s.houseOptions ? firstLineHouseKey : s.key;
-                      const list = roomDutiesBySlot[activeSlotKey] || [];
-                      const displayLabel = s.houseOptions
-                        ? roomDutySlotLabel(firstLineHouseKey)
-                        : s.label;
+                      const list = roomDutiesBySlot[s.key] || [];
                       return (
                         <TabsContent key={s.key} value={s.key} className="mt-3">
                           <section className={`flex flex-col rounded-xl p-3 ${s.panelClass}`}>
                             <header className="shrink-0 border-b border-slate-900/10 pb-2 mb-2 flex flex-wrap items-start justify-between gap-2">
-                              <div className="flex flex-col gap-2 min-w-0 flex-1">
-                                {s.houseOptions ? (
-                                  <div className="space-y-1 max-w-xs">
-                                    <Label className="text-xs text-slate-600">Kuća</Label>
-                                    <Select
-                                      value={firstLineHouseKey}
-                                      onValueChange={(v) => {
-                                        setFirstLineHouseKey(v);
-                                        setRoomDutySlotKey(v);
-                                      }}
-                                    >
-                                      <SelectTrigger className="h-9 bg-white/90">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {s.houseOptions.map((opt) => (
-                                          <SelectItem key={opt.key} value={opt.key}>
-                                            {opt.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm leading-tight min-w-0">
-                                    <span className="font-semibold text-slate-900">{displayLabel}</span>
-                                    <span className="text-slate-400 select-none" aria-hidden>
-                                      ·
-                                    </span>
-                                    <span className="text-slate-700 tabular-nums font-medium">
-                                      {ROOM_DUTY_WINDOW.timeRange}
-                                    </span>
-                                  </div>
-                                )}
-                                {s.houseOptions ? (
-                                  <span className="text-xs text-slate-600 tabular-nums font-medium">
-                                    {ROOM_DUTY_WINDOW.timeRange}
-                                  </span>
-                                ) : null}
+                              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm leading-tight min-w-0">
+                                <span className="font-semibold text-slate-900">{s.label}</span>
+                                <span className="text-slate-400 select-none" aria-hidden>
+                                  ·
+                                </span>
+                                <span className="text-slate-700 tabular-nums font-medium">
+                                  {ROOM_DUTY_WINDOW.timeRange}
+                                </span>
                               </div>
                               {!isViewer && eligibleUsers.length > 0 && (
                                 <Button
@@ -844,32 +804,11 @@ export default function DezurstvaPlanPage() {
               </div>
               <div className="space-y-2">
                 <Label>Linija / kuća</Label>
-                {EXCURSION_DUTY_SLOTS.find((x) => x.key === 'aristotelis')?.houseOptions?.some(
-                  (o) => o.key === roomDutySlotKey,
-                ) || roomDutySlotKey === 'panorama-beach' ? (
-                  <Select
-                    value={roomDutySlotKey === 'panorama-beach' ? 'panorama-beach' : 'aristotelis'}
-                    onValueChange={(v) => {
-                      setRoomDutySlotKey(v);
-                      setFirstLineHouseKey(v);
-                    }}
-                    disabled={Boolean(roomDutyEditingId)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="aristotelis">Aristotelis</SelectItem>
-                      <SelectItem value="panorama-beach">Panorama Beach</SelectItem>
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    value={roomDutySlotLabel(roomDutySlotKey)}
-                    readOnly
-                    className="bg-slate-50"
-                  />
-                )}
+                <Input
+                  value={roomDutySlotLabel(roomDutySlotKey)}
+                  readOnly
+                  className="bg-slate-50"
+                />
               </div>
               <div className="space-y-2">
                 <Label>Korisnik</Label>
