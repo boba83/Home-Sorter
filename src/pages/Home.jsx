@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { createPageUrl, isHouseAssignedToUserId, userDisplayName } from '@/utils';
 import FileUploader from '@/components/FileUploader';
 import ExtractedDataPreview from '@/components/ExtractedDataPreview';
@@ -48,6 +48,7 @@ function getOccupantNames(room) {
 }
 
 export default function Home() {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [showUploader, setShowUploader] = useState(false);
     const [extractedData, setExtractedData] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
@@ -55,7 +56,7 @@ export default function Home() {
     const [filterByUser, setFilterByUser] = useState('all');
     const [selectedHouses, setSelectedHouses] = useState(new Set());
     const [isDeleting, setIsDeleting] = useState(false);
-    const [selectedLocation, setSelectedLocation] = useState(null);
+    const [selectedLocation, setSelectedLocation] = useState(() => searchParams.get('location'));
     const [importTargetLocation, setImportTargetLocation] = useState('');
     const [isAddingHouse, setIsAddingHouse] = useState(false);
     const [isSavingHouse, setIsSavingHouse] = useState(false);
@@ -65,6 +66,11 @@ export default function Home() {
     const queryClient = useQueryClient();
 
     const stayPeriodActive = Boolean(stayPeriodFrom && stayPeriodTo);
+
+    useEffect(() => {
+        const loc = searchParams.get('location');
+        setSelectedLocation(loc);
+    }, [searchParams]);
 
     const effectiveImportLocation = selectedLocation || importTargetLocation || null;
 
@@ -107,8 +113,9 @@ export default function Home() {
         if (filterByUser !== 'all') {
             setSelectedLocation(null);
             setSelectedHouses(new Set());
+            setSearchParams({});
         }
-    }, [filterByUser]);
+    }, [filterByUser, setSearchParams]);
 
     const houseList = Array.isArray(houses) ? houses : [];
     const roomList = Array.isArray(rooms) ? rooms : [];
@@ -132,6 +139,7 @@ export default function Home() {
         queryClient.invalidateQueries({ queryKey: ['rooms'] });
         if (importedLocation) {
             setSelectedLocation(importedLocation);
+            setSearchParams({ location: importedLocation });
         }
     };
 
@@ -182,7 +190,10 @@ export default function Home() {
             queryClient.invalidateQueries({ queryKey: ['houses'] });
             setIsAddingHouse(false);
             setNewHouseData({ name: '', address: '', location: '' });
-            if (!selectedLocation) setSelectedLocation(location);
+            if (!selectedLocation && location) {
+                setSelectedLocation(location);
+                setSearchParams({ location });
+            }
         } catch (e) {
             alert(e.message || 'Kuća nije dodata');
         } finally {
@@ -213,6 +224,14 @@ export default function Home() {
         setShowUploader(false);
         setExtractedData(null);
         setSelectedHouses(new Set());
+        if (location) setSearchParams({ location });
+        else setSearchParams({});
+    };
+
+    const clearSelectedLocation = () => {
+        setSelectedLocation(null);
+        setSelectedHouses(new Set());
+        setSearchParams({});
     };
 
     const filteredHouses = userFilteredHouses.filter((house) => {
@@ -812,10 +831,7 @@ export default function Home() {
                                             ),
                                         0,
                                     )}
-                                    onClick={() => {
-                                        setSelectedLocation('__unlocated__');
-                                        setSelectedHouses(new Set());
-                                    }}
+                                    onClick={() => openLocation('__unlocated__')}
                                     isSelected={false}
                                 />
                             )}
@@ -830,10 +846,7 @@ export default function Home() {
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => {
-                                setSelectedLocation(null);
-                                setSelectedHouses(new Set());
-                            }}
+                            onClick={clearSelectedLocation}
                             className="gap-2"
                         >
                             <ArrowLeft className="w-4 h-4" />
@@ -968,6 +981,11 @@ export default function Home() {
                                     })}
                                     userColor={getUserColor(house.responsible_person)}
                                     detailsScope={houseScope}
+                                    fromLocation={
+                                        selectedLocation ||
+                                        String(house.location || '').trim() ||
+                                        ''
+                                    }
                                 />
                             </div>
                         ))}

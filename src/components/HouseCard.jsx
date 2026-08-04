@@ -4,7 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { Building2, DoorOpen, Users, ChevronRight, UserCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-export default function HouseCard({ house, rooms = [], userColor = 'slate', detailsScope = 'all' }) {
+export default function HouseCard({
+    house,
+    rooms = [],
+    userColor = 'slate',
+    detailsScope = 'all',
+    fromLocation = '',
+}) {
     if (!house?.id) return null;
 
     const safeRooms = Array.isArray(rooms) ? rooms : [];
@@ -31,9 +37,16 @@ export default function HouseCard({ house, rooms = [], userColor = 'slate', deta
     const safeColor = colorClasses[userColor] ? userColor : 'slate';
     const borderClass = house.responsible_person ? colorClasses[safeColor] : colorClasses.slate;
 
+    const from = String(fromLocation || house?.location || '').trim();
+    const detailsQuery = [
+        `id=${encodeURIComponent(house.id)}`,
+        `scope=${encodeURIComponent(detailsScope)}`,
+    ];
+    if (from) detailsQuery.push(`from=${encodeURIComponent(from)}`);
+
     return (
         <div>
-            <Link to={createPageUrl(`HouseDetails?id=${house.id}&scope=${detailsScope}`)}>
+            <Link to={createPageUrl(`HouseDetails?${detailsQuery.join('&')}`)}>
                 <Card className={`group hover:shadow-lg transition-all duration-300 cursor-pointer border-2 ${borderClass} relative`}>
                     <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
