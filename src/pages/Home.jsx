@@ -109,13 +109,23 @@ export default function Home() {
     const houseScope =
         filterByUser === 'all' ? 'all' : `user&userId=${encodeURIComponent(filterByUser)}`;
 
+    // Reset location view only when the user filter changes — not when URL
+    // search params change (that would instantly undo openLocation).
     useEffect(() => {
-        if (filterByUser !== 'all') {
-            setSelectedLocation(null);
-            setSelectedHouses(new Set());
-            setSearchParams({});
-        }
-    }, [filterByUser, setSearchParams]);
+        if (filterByUser === 'all') return;
+        setSelectedLocation(null);
+        setSelectedHouses(new Set());
+        setSearchParams(
+            (prev) => {
+                if (!prev.get('location')) return prev;
+                const next = new URLSearchParams(prev);
+                next.delete('location');
+                return next;
+            },
+            { replace: true },
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only on filterByUser
+    }, [filterByUser]);
 
     const houseList = Array.isArray(houses) ? houses : [];
     const roomList = Array.isArray(rooms) ? rooms : [];
