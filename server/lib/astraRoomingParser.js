@@ -8,9 +8,9 @@ import {
 } from './roomingStructureProtect.js';
 
 const SEX_ALT = 'MR|MRS|CHD|INF|MS|MISS|DR';
-/** Sobe: 4, 101, B3, A1, A 1, UL9, 11A, 5b, 3-B, 02. (PDF artefakt tačka) */
+/** Sobe: 4, 101, B3, A1, A 1, UL9, 11A, 5b, 3-B, 02., 4.. (PDF artefakt tačka/e) */
 const ROOM =
-  '(?:[A-Za-z]{2,3}\\d{1,3}|[A-Za-z]\\s*\\d{1,3}|[A-Za-z]\\d{1,3}|\\d{1,4}(?:\\s*-\\s*[A-Za-z]{1,2}|[A-Za-z]{1,2})?\\.?)';
+  '(?:[A-Za-z]{2,3}\\d{1,3}|[A-Za-z]\\s*\\d{1,3}|[A-Za-z]\\d{1,3}|\\d{1,4}(?:\\s*-\\s*[A-Za-z]{1,2}|[A-Za-z]{1,2})?(?:\\.\\.+|\\.)?)';
 const VOUCHER_IN_LINE = /\d{4,}\/\d{2,}/;
 
 const PRIMARY_GUEST = new RegExp(
